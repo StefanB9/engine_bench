@@ -10,7 +10,7 @@ pub(super) const RESET: usize = 4;
 
 /// Initial-pressure limits keep tank A, which cools as it expands, above the
 /// 200 K floor of the gas data for every setting (worst case ≈ 213 K).
-pub(super) const CONTROLS: [ControlSpec; 5] = [
+pub(crate) const CONTROLS: [ControlSpec; 5] = [
     ControlSpec {
         key: "valve",
         label: "Valve opening",

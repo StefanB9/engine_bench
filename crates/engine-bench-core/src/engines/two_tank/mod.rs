@@ -23,11 +23,11 @@ use engine_bench_physics::{
 
 pub(crate) use self::{
     draw::draw,
-    spec::{CHANNELS, channel},
+    spec::{CHANNELS, CONTROLS, channel},
 };
 use self::{
     dynamics::Dynamics,
-    spec::{CONTROLS, HEATER, PRESSURE_A, PRESSURE_B, RESET, VALVE},
+    spec::{HEATER, PRESSURE_A, PRESSURE_B, RESET, VALVE},
 };
 use crate::{
     CoreError,

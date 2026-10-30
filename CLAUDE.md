@@ -43,6 +43,9 @@ engine_bench/                          (workspace root)
     │   └── src/
     │       ├── lib.rs                 Module declarations
     │       ├── error.rs               CoreError (thiserror)
+    │       ├── clock.rs               Clock trait: SystemClock, MockClock (set_time / advance)
+    │       ├── pacer.rs               RealTimePacer: wall time → fixed physics steps, cap, scale
+    │       ├── offline.rs             Batch run() and parallel sweep() → Recording
     │       ├── spec/                  QuantityKind, ControlSpec, ChannelSpec (+ role), StepContext
     │       ├── engine/                Engine trait, EngineId (registry + draw), AnyEngine dispatch
     │       ├── engines/               Engine models: two_tank (demo) = model, spec, dynamics, draw

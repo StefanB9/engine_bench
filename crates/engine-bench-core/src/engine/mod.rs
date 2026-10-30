@@ -86,6 +86,14 @@ impl EngineId {
         }
     }
 
+    /// Controls in id order, without needing an instance (for the command
+    /// line).
+    pub fn controls(self) -> &'static [ControlSpec] {
+        match self {
+            Self::TwoTankDemo => &two_tank::CONTROLS,
+        }
+    }
+
     /// Channels in sample order, without needing an instance (for recordings).
     pub fn channels(self) -> &'static [ChannelSpec] {
         match self {
@@ -196,6 +204,7 @@ mod tests {
             let engine = AnyEngine::new(id)?;
             anyhow::ensure!(engine.descriptor().id == id, "{id:?}");
             anyhow::ensure!(engine.channels() == id.channels(), "{id:?} channels");
+            anyhow::ensure!(engine.controls() == id.controls(), "{id:?} controls");
             anyhow::ensure!(
                 engine.control_values().len() == engine.controls().len(),
                 "{id:?} control values"
