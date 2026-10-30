@@ -7,6 +7,7 @@
 //! code.
 
 pub mod error;
+pub mod scene;
 pub mod spec;
 
 pub use error::CoreError;
