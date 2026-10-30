@@ -6,7 +6,9 @@
 //! equilibrium chemistry (M5).
 
 pub mod isentropic;
+mod orifice;
 mod perfect_gas;
 pub mod shock;
 
+pub use orifice::{Orifice, Reservoir};
 pub use perfect_gas::PerfectGas;
