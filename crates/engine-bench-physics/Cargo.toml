@@ -4,11 +4,18 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = { workspace = true }
+thiserror = { workspace = true }
 uom = { workspace = true }
 
 [dev-dependencies]
-anyhow = { workspace = true }
 approx = { workspace = true }
+criterion = { workspace = true }
+proptest = { workspace = true }
+
+[[bench]]
+name = "kernels"
+harness = false
 
 [lints]
 workspace = true
