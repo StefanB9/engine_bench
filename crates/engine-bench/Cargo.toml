@@ -1,0 +1,15 @@
+[package]
+name = "engine-bench"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+engine-bench-core = { version = "0.1.0", path = "../engine-bench-core" }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+
+[lints]
+workspace = true

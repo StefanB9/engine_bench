@@ -1,0 +1,12 @@
+.claude
+.idea
+/target
+
+# Environment files with secrets
+.env
+.env.local
+.env.production
+# Keep the example template tracked
+!.env.example
+
+logs
