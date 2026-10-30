@@ -2,11 +2,14 @@
 //! shared by the binaries.
 //!
 //! Engines describe their controls and observable channels ([`spec`]), advance
-//! themselves in time, and draw a [`scene`](crate::scene) from a sample of
+//! themselves in time, and draw a [`scene`] from a sample of
 //! their channels, so the live view and replay of a recording run the same
 //! code.
 
+pub mod engine;
+pub mod engines;
 pub mod error;
+pub mod recording;
 pub mod scene;
 pub mod spec;
 

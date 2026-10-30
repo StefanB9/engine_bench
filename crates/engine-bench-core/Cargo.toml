@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
+engine-bench-physics = { version = "0.1.0", path = "../engine-bench-physics" }
 thiserror = { workspace = true }
 
 [dev-dependencies]
