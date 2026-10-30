@@ -5,6 +5,7 @@
 //! models on top.
 
 pub mod error;
+pub mod flow;
 pub mod numerics;
 pub mod thermo;
 pub mod units;
