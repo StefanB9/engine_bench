@@ -111,6 +111,7 @@ cargo build -p engine-bench                   # Build the binary
 - **Retryable errors:** Expose `is_retryable()` on error enums that cover transient failures.
 - **Forbidden everywhere (including tests):** `.unwrap()`, `.expect()`, `panic!()`, `todo!()` — enforced by lints with `--all-targets`.
 - **Fallible constructors:** Return `Result<Self>` not `Self`. Validate inputs at construction.
+- **Hot-path kernels are infallible.** Property evaluation, fluxes and ODE derivatives run millions of times per second and take already-validated inputs; they return plain values, not `Result`. Validation happens at the edges: constructors and solver steps (`step()`, `solve()`) return `Result` and check for out-of-range or non-finite state.
 
 ## Coding Standards
 
