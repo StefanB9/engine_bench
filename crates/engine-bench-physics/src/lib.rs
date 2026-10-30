@@ -6,6 +6,7 @@
 
 pub mod error;
 pub mod flow;
+pub mod gas;
 pub mod numerics;
 pub mod thermo;
 pub mod units;

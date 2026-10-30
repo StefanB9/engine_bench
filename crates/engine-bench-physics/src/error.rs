@@ -45,6 +45,16 @@ pub enum PhysicsError {
     /// A gas composition is negative, non-finite or does not sum to one.
     #[error("invalid composition: {0}")]
     InvalidComposition(&'static str),
+    /// A temperature left the range covered by the thermodynamic data.
+    #[error("temperature {temperature} K outside the data range {min}..{max} K")]
+    TemperatureOutOfRange {
+        /// Offending temperature, K.
+        temperature: f64,
+        /// Lowest valid temperature, K.
+        min: f64,
+        /// Highest valid temperature, K.
+        max: f64,
+    },
     /// A geometric parameter (area, length) is non-physical.
     #[error("invalid geometry: {0}")]
     InvalidGeometry(&'static str),
@@ -91,6 +101,14 @@ mod tests {
             (
                 PhysicsError::InvalidComposition("fractions sum to 0.5"),
                 "invalid composition: fractions sum to 0.5",
+            ),
+            (
+                PhysicsError::TemperatureOutOfRange {
+                    temperature: 150.5,
+                    min: 200.0,
+                    max: 6000.0,
+                },
+                "temperature 150.5 K outside the data range 200..6000 K",
             ),
             (
                 PhysicsError::InvalidGeometry("exit area below throat area"),
