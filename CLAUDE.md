@@ -20,6 +20,11 @@ engine_bench/                          (workspace root)
     │   └── src/
     │       ├── lib.rs                 Module declarations
     │       ├── error.rs               PhysicsError (thiserror), carried inside anyhow::Error
+    │       ├── flow/                  Perfect-gas compressible flow (γ frozen upstream)
+    │       │   ├── isentropic.rs      Ratios vs Mach, A/A*, M(A/A*), Prandtl–Meyer
+    │       │   ├── shock.rs           Normal-shock relations
+    │       │   ├── orifice.rs         Reservoir, Orifice: bidirectional, choked, C¹ near Δp = 0
+    │       │   └── nozzle/            Nozzle operating point: every quasi-1D regime, thrust, Isp
     │       ├── units.rs               uom SI quantities for public APIs
     │       ├── numerics/
     │       │   ├── roots.rs           Brent, bracketed Newton

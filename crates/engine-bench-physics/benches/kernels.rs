@@ -3,16 +3,21 @@
 //!
 //! Run with `cargo bench -p engine-bench-physics --profile bench-unwind`.
 
-use std::hint::black_box;
+use std::{hint::black_box, io::Write as _};
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use engine_bench_physics::{
+    flow::{Nozzle, Orifice, PerfectGas, Reservoir},
     numerics::{
         ode::{AdaptiveOptions, DormandPrince45, NoEvents, OdeSystem, rk4_step},
         roots::{RootOptions, brent, newton_bracketed},
     },
     thermo::{Major7, Mixture, TemperaturePowers, gases},
-    units::{ThermodynamicTemperature, thermodynamic_temperature::kelvin},
+    units::{
+        Area, Pressure, SpecificHeatCapacity, ThermodynamicTemperature, area::square_meter,
+        pressure::pascal, specific_heat_capacity::joule_per_kilogram_kelvin,
+        thermodynamic_temperature::kelvin,
+    },
 };
 
 /// Lorenz system: small, nonlinear and non-trivial for step-size control.
@@ -107,5 +112,51 @@ fn thermo(c: &mut Criterion) {
     });
 }
 
-criterion_group!(kernels, ode, roots, thermo);
+fn flow(c: &mut Criterion) -> anyhow::Result<()> {
+    let air = PerfectGas::new(
+        1.4,
+        SpecificHeatCapacity::new::<joule_per_kilogram_kelvin>(287.0),
+    )?;
+    let reservoir = |p: f64| {
+        Reservoir::new(
+            Pressure::new::<pascal>(p),
+            ThermodynamicTemperature::new::<kelvin>(300.0),
+            air,
+        )
+    };
+    let tank = reservoir(1.0e6)?;
+    let orifice = Orifice::new(Area::new::<square_meter>(1e-5), 0.8)?;
+    for (name, p_down) in [
+        ("linear_band", 0.9995e6),
+        ("unchoked", 0.8e6),
+        ("choked", 1e5),
+    ] {
+        let down = reservoir(p_down)?;
+        c.bench_function(&format!("orifice/{name}"), |b| {
+            b.iter(|| orifice.mass_flow(black_box(&tank), black_box(&down)));
+        });
+    }
+
+    let nozzle = Nozzle::new(
+        Area::new::<square_meter>(1e-4),
+        Area::new::<square_meter>(4e-4),
+    )?;
+    for (name, p_back) in [("under_expanded", 1e4), ("shock_in_nozzle", 6e5)] {
+        let p_back = Pressure::new::<pascal>(p_back);
+        c.bench_function(&format!("nozzle/{name}"), |b| {
+            b.iter(|| nozzle.operating_point(black_box(&tank), black_box(p_back)));
+        });
+    }
+    Ok(())
+}
+
+fn flow_benches(c: &mut Criterion) {
+    // Criterion offers no error channel; report a setup failure instead of
+    // skipping silently.
+    if let Err(e) = flow(c) {
+        let _ = writeln!(std::io::stderr(), "flow benchmarks skipped: {e:#}");
+    }
+}
+
+criterion_group!(kernels, ode, roots, thermo, flow_benches);
 criterion_main!(kernels);
