@@ -109,7 +109,9 @@ Species vendored now: N2, O2, Ar, H2O, CO2, CO, H2 (used in M1) plus OH, H, O, N
 
 `crates/engine-bench-physics/benches/kernels.rs`: species/mixture property evaluation,
 T-from-u inversion, orifice mass flow, nozzle operating point, RK4/DP45 step on a
-control-volume system. Run with `cargo bench -p engine-bench-physics`. They are a baseline,
+control-volume system. Run with `cargo bench -p engine-bench-physics --profile bench-unwind`
+(the harness needs unwinding; the release profile uses `immediate-abort` with `build-std`,
+which makes plain `cargo bench` build two clashing std copies). They are a baseline,
 not a gate.
 
 ## CLAUDE.md changes

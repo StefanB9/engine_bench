@@ -13,9 +13,15 @@ engine_bench/                          (workspace root)
 │
 └── crates/
     ├── engine-bench-physics/          (library — units, thermo, chemistry, numerics, solvers)
+    │   ├── benches/kernels.rs         criterion benchmarks of hot kernels (baseline, not a gate)
+    │   ├── proptest-regressions/      Saved proptest failure seeds (committed, re-run first)
     │   └── src/
     │       ├── lib.rs                 Module declarations
-    │       └── units.rs               uom SI quantities for public APIs
+    │       ├── error.rs               PhysicsError (thiserror), carried inside anyhow::Error
+    │       ├── units.rs               uom SI quantities for public APIs
+    │       └── numerics/
+    │           ├── roots.rs           Brent, bracketed Newton
+    │           └── ode/               OdeSystem, rk4_step, DormandPrince45 (dense output, events)
     │
     ├── engine-bench-core/             (library — engine models, Engine trait, Scene, recording)
     │   └── src/lib.rs                 Module declarations + re-exports
@@ -51,6 +57,7 @@ cargo clippy --workspace --all-targets        # Zero warnings required (includes
 cargo check --workspace --all-targets         # Type-check everything including tests
 cargo fmt --all -- --check                    # Format check
 cargo build -p engine-bench                   # Build the binary
+cargo bench -p engine-bench-physics --profile bench-unwind   # Kernel benchmarks (plain `cargo bench` fails: build-std + immediate-abort)
 ```
 
 **Always use `cargo nextest run` instead of `cargo test`.** Nextest is the project's test runner.

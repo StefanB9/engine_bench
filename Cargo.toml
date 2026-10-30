@@ -59,3 +59,10 @@ overflow-checks = true
 panic = "unwind"
 rpath = true
 strip = false
+
+# Benchmarks: release optimisations with unwinding. The libtest/criterion harness needs
+# unwinding, and with `build-std` an `immediate-abort` std would be built alongside an
+# unwinding one and clash. Run with `cargo bench --profile bench-unwind`.
+[profile.bench-unwind]
+inherits = "release"
+panic = "unwind"
