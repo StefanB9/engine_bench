@@ -5,9 +5,10 @@
 //! `f64` struct-of-arrays and re-wrap results on the way out.
 
 pub use uom::si::{
-    Quantity, acceleration, angle, angular_velocity, area, f64::*, force, heat_capacity, length,
-    mass, mass_density, mass_rate, power, pressure, ratio, specific_heat_capacity,
-    thermodynamic_temperature, time, torque, velocity, volume,
+    Quantity, acceleration, angle, angular_velocity, area, available_energy, energy, f64::*, force,
+    heat_capacity, length, mass, mass_density, mass_rate, molar_energy, molar_heat_capacity,
+    molar_mass, power, pressure, ratio, specific_heat_capacity, thermodynamic_temperature, time,
+    torque, velocity, volume,
 };
 
 #[cfg(test)]

@@ -6,6 +6,7 @@
 
 pub mod error;
 pub mod numerics;
+pub mod thermo;
 pub mod units;
 
 pub use error::PhysicsError;
