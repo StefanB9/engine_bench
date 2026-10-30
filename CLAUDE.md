@@ -1,6 +1,6 @@
 # Engine Bench Engineering Standards
 
-Engine Bench, built in Rust. The project is at the skeleton stage: its purpose and architecture are decided through the planning process below and recorded in `docs/plan/`. Keep this file in sync as the project grows.
+Engine Bench, built in Rust: physical simulation and animated 2D visualization of 38 engines, from the aeolipile to rotating detonation and ion thrusters, in real-time and offline modes. Architecture and roadmap: `docs/plan/0001-architecture-and-roadmap.md`. Keep this file in sync as the project grows.
 
 ## Project Structure
 
@@ -80,6 +80,8 @@ cargo build -p engine-bench                   # Build the binary
 - **Time mocking:** Abstract time behind a `Clock` trait with a mock (`set_time()` / `advance()`) instead of real time.
 
 ## Performance Rules
+
+**Runtime performance beats compile time in every trade-off.** Slower builds, heavier generics, more monomorphisation, `lto`/`codegen-units = 1`, and compile-time-heavy crates are all acceptable when they make the program faster or safer at no runtime cost. Never trade runtime speed for faster compiles.
 
 ### Mandatory
 
