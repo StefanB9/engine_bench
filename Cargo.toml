@@ -4,6 +4,7 @@ cargo-features = ["panic-immediate-abort"]
 members = [
     "crates/engine-bench",
     "crates/engine-bench-core",
+    "crates/engine-bench-physics",
 ]
 resolver = "3"
 
@@ -27,6 +28,10 @@ missing_panics_doc = "allow"
 anyhow = { version = "1.0.104", default-features = false, features = ["std"] }
 tracing = { version = "0.1.44", default-features = false, features = ["attributes", "std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt", "std"] }
+uom = { version = "0.38.0", default-features = false, features = ["f64", "si", "std"] }
+
+# dev-only
+approx = { version = "0.5.1", default-features = false }
 
 [profile.release]
 codegen-units = 1

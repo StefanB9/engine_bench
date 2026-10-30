@@ -4,7 +4,7 @@ Engine Bench, built in Rust: physical simulation and animated 2D visualization o
 
 ## Project Structure
 
-Cargo workspace with 2 members:
+Cargo workspace with 3 members:
 
 ```
 engine_bench/                          (workspace root)
@@ -12,7 +12,12 @@ engine_bench/                          (workspace root)
 ├── docs/plan/                         Approved plans
 │
 └── crates/
-    ├── engine-bench-core/             (library — domain logic shared by the binaries)
+    ├── engine-bench-physics/          (library — units, thermo, chemistry, numerics, solvers)
+    │   └── src/
+    │       ├── lib.rs                 Module declarations
+    │       └── units.rs               uom SI quantities for public APIs
+    │
+    ├── engine-bench-core/             (library — engine models, Engine trait, Scene, recording)
     │   └── src/lib.rs                 Module declarations + re-exports
     │
     └── engine-bench/                  (binary)
@@ -21,7 +26,9 @@ engine_bench/                          (workspace root)
             └── logging.rs             tracing setup (console, RUST_LOG override)
 ```
 
-**Dependency boundary:** core ← engine-bench. Core has no binary-only dependencies (logging setup, CLI parsing, UI). Never reverse.
+**Dependency boundary:** physics ← core ← engine-bench. Never reverse. Physics knows nothing about specific engines. Core has no binary-only dependencies (logging setup, CLI parsing, UI): engines describe what to draw as a renderer-agnostic `Scene`, and the binary renders it.
+
+**Units:** `uom` quantities (re-exported from `engine_bench_physics::units`) in all public APIs. Hot kernels unwrap to raw `f64` struct-of-arrays and re-wrap on output.
 
 ## Planning Process
 
@@ -38,6 +45,7 @@ Do not silently make architectural decisions. If the implementation plan documen
 
 ```bash
 cargo nextest run --workspace                 # All workspace tests (use nextest, not cargo test)
+cargo nextest run -p engine-bench-physics     # Physics-only tests
 cargo nextest run -p engine-bench-core        # Core-only tests
 cargo clippy --workspace --all-targets        # Zero warnings required (includes tests)
 cargo check --workspace --all-targets         # Type-check everything including tests
@@ -172,7 +180,7 @@ Minimum necessary. `pub(super)` or `pub(crate)` for internal types. Private fiel
 
 **Rule 2: Minimum Features Enabled.** Strictly limit feature opt-ins to the absolute bare minimum required for the code to compile and run. Never use blanket features like `features = ["full"]`. This keeps compile times fast, binary sizes small, and the attack surface minimal.
 
-**Rule 3: Deps live in the narrowest crate.** Binary-only dependencies (logging setup, CLI, UI) belong in the binary crate, never in `engine-bench-core`. All versions are defined in the workspace root `[workspace.dependencies]`.
+**Rule 3: Deps live in the narrowest crate.** Binary-only dependencies (logging setup, CLI, UI) belong in the binary crate, never in `engine-bench-core` or `engine-bench-physics`. All versions are defined in the workspace root `[workspace.dependencies]`.
 
 **General:**
 - New dependencies require justification: what problem, why this crate, what alternatives were considered.
