@@ -13,15 +13,23 @@ engine_bench/                          (workspace root)
 │
 └── crates/
     ├── engine-bench-physics/          (library — units, thermo, chemistry, numerics, solvers)
+    │   ├── build.rs                   Parses data/thermo.inp → const species tables (OUT_DIR)
+    │   ├── data/thermo.inp            Vendored NASA Glenn 9-coefficient records (from NASA CEA)
     │   ├── benches/kernels.rs         criterion benchmarks of hot kernels (baseline, not a gate)
     │   ├── proptest-regressions/      Saved proptest failure seeds (committed, re-run first)
     │   └── src/
     │       ├── lib.rs                 Module declarations
     │       ├── error.rs               PhysicsError (thiserror), carried inside anyhow::Error
     │       ├── units.rs               uom SI quantities for public APIs
-    │       └── numerics/
-    │           ├── roots.rs           Brent, bracketed Newton
-    │           └── ode/               OdeSystem, rk4_step, DormandPrince45 (dense output, events)
+    │       ├── numerics/
+    │       │   ├── roots.rs           Brent, bracketed Newton
+    │       │   └── ode/               OdeSystem, rk4_step, DormandPrince45 (dense output, events)
+    │       └── thermo/
+    │           ├── gases.rs           Generated species constants (N2, O2, …, ALL)
+    │           ├── nasa9.rs           TemperaturePowers + 9-coefficient polynomial kernels
+    │           ├── species.rs         Species, Element; constant-cp extrapolation below range
+    │           ├── species_set.rs     SpeciesSet<N> (compile-time), Air3, Major7
+    │           └── mixture/           Mixture<S, N>: composition, properties, T from u / h
     │
     ├── engine-bench-core/             (library — engine models, Engine trait, Scene, recording)
     │   └── src/lib.rs                 Module declarations + re-exports

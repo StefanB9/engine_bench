@@ -6,9 +6,13 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use engine_bench_physics::numerics::{
-    ode::{AdaptiveOptions, DormandPrince45, NoEvents, OdeSystem, rk4_step},
-    roots::{RootOptions, brent, newton_bracketed},
+use engine_bench_physics::{
+    numerics::{
+        ode::{AdaptiveOptions, DormandPrince45, NoEvents, OdeSystem, rk4_step},
+        roots::{RootOptions, brent, newton_bracketed},
+    },
+    thermo::{Major7, Mixture, TemperaturePowers, gases},
+    units::{ThermodynamicTemperature, thermodynamic_temperature::kelvin},
 };
 
 /// Lorenz system: small, nonlinear and non-trivial for step-size control.
@@ -67,5 +71,41 @@ fn roots(c: &mut Criterion) {
     });
 }
 
-criterion_group!(kernels, ode, roots);
+fn thermo(c: &mut Criterion) {
+    let t = ThermodynamicTemperature::new::<kelvin>(1850.0);
+    c.bench_function("species/co2_cp_h_s", |b| {
+        b.iter(|| {
+            let p = TemperaturePowers::new(black_box(t));
+            (
+                gases::CO2.cp_over_r(&p),
+                gases::CO2.h_over_rt(&p),
+                gases::CO2.s_over_r(&p),
+            )
+        });
+    });
+
+    // Lean hydrogen-air combustion products.
+    let Ok(products) =
+        Mixture::<Major7, 7>::from_mass_fractions([0.72, 0.12, 0.012, 0.148, 0.0, 0.0, 0.0])
+    else {
+        return;
+    };
+    c.bench_function("mixture_major7/cp", |b| {
+        b.iter(|| products.cp(black_box(t)));
+    });
+    c.bench_function("mixture_major7/enthalpy", |b| {
+        b.iter(|| products.enthalpy(black_box(t)));
+    });
+    let u = products.internal_energy(t);
+    let warm = ThermodynamicTemperature::new::<kelvin>(1840.0);
+    let cold = ThermodynamicTemperature::new::<kelvin>(300.0);
+    c.bench_function("mixture_major7/t_from_u_warm_start", |b| {
+        b.iter(|| products.temperature_from_internal_energy(black_box(u), black_box(warm)));
+    });
+    c.bench_function("mixture_major7/t_from_u_cold_start", |b| {
+        b.iter(|| products.temperature_from_internal_energy(black_box(u), black_box(cold)));
+    });
+}
+
+criterion_group!(kernels, ode, roots, thermo);
 criterion_main!(kernels);

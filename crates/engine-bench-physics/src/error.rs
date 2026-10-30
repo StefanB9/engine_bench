@@ -42,6 +42,9 @@ pub enum PhysicsError {
         /// Rejected step size.
         h: f64,
     },
+    /// A gas composition is negative, non-finite or does not sum to one.
+    #[error("invalid composition: {0}")]
+    InvalidComposition(&'static str),
     /// A solver option is out of its valid range.
     #[error("invalid solver setting: {0}")]
     InvalidSetting(&'static str),
@@ -77,6 +80,10 @@ mod tests {
             (
                 PhysicsError::StepSizeUnderflow { t: 1.0, h: 1e-15 },
                 "step size 1e-15 underflowed at t = 1",
+            ),
+            (
+                PhysicsError::InvalidComposition("fractions sum to 0.5"),
+                "invalid composition: fractions sum to 0.5",
             ),
             (
                 PhysicsError::InvalidSetting("rtol must be positive"),
