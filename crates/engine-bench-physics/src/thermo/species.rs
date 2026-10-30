@@ -56,6 +56,12 @@ impl Species {
         MolarMass::new::<kilogram_per_mole>(self.molar_mass)
     }
 
+    /// Molar mass in kg/mol, for kernels.
+    #[inline]
+    pub(crate) fn molar_mass_si(&self) -> f64 {
+        self.molar_mass
+    }
+
     /// Atoms per molecule, e.g. CO2 → `[(C, 1.0), (O, 2.0)]`.
     pub fn elements(&self) -> &'static [(Element, f64)] {
         self.elements
@@ -77,10 +83,13 @@ impl Species {
         )
     }
 
-    /// Fit range in kelvin, for kernels.
+    /// Fit range in kelvin, for kernels and compile-time set ranges.
     #[inline]
-    pub(crate) fn range_kelvin(&self) -> (f64, f64) {
-        (self.first().t_min, self.last().t_max)
+    pub(crate) const fn range_kelvin(&self) -> (f64, f64) {
+        (
+            self.intervals[0].t_min,
+            self.intervals[self.intervals.len() - 1].t_max,
+        )
     }
 
     /// cp/R at the given temperature.
@@ -121,10 +130,6 @@ impl Species {
 
     fn first(&self) -> &Interval {
         &self.intervals[0]
-    }
-
-    fn last(&self) -> &Interval {
-        &self.intervals[self.intervals.len() - 1]
     }
 
     /// The interval containing `t`; the last one above the range (polynomial
