@@ -17,6 +17,7 @@ engine_bench/                          (workspace root)
     │   ├── data/thermo.inp            Vendored NASA Glenn 9-coefficient records (from NASA CEA)
     │   ├── benches/kernels.rs         criterion benchmarks of hot kernels (baseline, not a gate)
     │   ├── proptest-regressions/      Saved proptest failure seeds (committed, re-run first)
+    │   ├── tests/control_volume.rs    Integration: coupled volumes, conservation, blowdown
     │   └── src/
     │       ├── lib.rs                 Module declarations
     │       ├── error.rs               PhysicsError (thiserror), carried inside anyhow::Error
@@ -26,6 +27,8 @@ engine_bench/                          (workspace root)
     │       │   ├── orifice.rs         Reservoir, Orifice: bidirectional, choked, C¹ near Δp = 0
     │       │   └── nozzle/            Nozzle operating point: every quasi-1D regime, thrust, Isp
     │       ├── units.rs               uom SI quantities for public APIs
+    │       ├── gas/                   Lumped volumes: ControlVolume, Environment, GasPort,
+    │       │                          orifice_transfer (conservative by construction)
     │       ├── numerics/
     │       │   ├── roots.rs           Brent, bracketed Newton
     │       │   └── ode/               OdeSystem, rk4_step, DormandPrince45 (dense output, events)

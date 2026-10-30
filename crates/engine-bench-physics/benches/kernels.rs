@@ -8,15 +8,16 @@ use std::{hint::black_box, io::Write as _};
 use criterion::{Criterion, criterion_group, criterion_main};
 use engine_bench_physics::{
     flow::{Nozzle, Orifice, PerfectGas, Reservoir},
+    gas::{ControlVolume, orifice_transfer},
     numerics::{
         ode::{AdaptiveOptions, DormandPrince45, NoEvents, OdeSystem, rk4_step},
         roots::{RootOptions, brent, newton_bracketed},
     },
-    thermo::{Major7, Mixture, TemperaturePowers, gases},
+    thermo::{Air3, Major7, Mixture, TemperaturePowers, gases},
     units::{
-        Area, Pressure, SpecificHeatCapacity, ThermodynamicTemperature, area::square_meter,
-        pressure::pascal, specific_heat_capacity::joule_per_kilogram_kelvin,
-        thermodynamic_temperature::kelvin,
+        Area, Pressure, SpecificHeatCapacity, ThermodynamicTemperature, Volume, area::square_meter,
+        energy::joule, pressure::pascal, specific_heat_capacity::joule_per_kilogram_kelvin,
+        thermodynamic_temperature::kelvin, volume::cubic_meter,
     },
 };
 
@@ -150,11 +151,41 @@ fn flow(c: &mut Criterion) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// What one ODE derivative evaluation of a two-tank model costs.
+fn gas(c: &mut Criterion) -> anyhow::Result<()> {
+    let tank = |p: f64, t: f64| -> anyhow::Result<ControlVolume<Air3, 3>> {
+        ControlVolume::new(
+            Mixture::dry_air()?,
+            Pressure::new::<pascal>(p),
+            ThermodynamicTemperature::new::<kelvin>(t),
+            Volume::new::<cubic_meter>(0.01),
+        )
+    };
+    let (mut a, b) = (tank(8e5, 500.0)?, tank(1e5, 300.0)?);
+    let masses = *a.species_masses();
+    let energy = a.internal_energy().get::<joule>();
+    c.bench_function("control_volume/set_conserved_air3", |bench| {
+        bench.iter(|| {
+            // A slightly perturbed state, as between Runge–Kutta stages.
+            a.set_conserved(black_box(&masses), black_box(energy * 1.000_001), 0.01);
+            a.pressure()
+        });
+    });
+    let orifice = Orifice::new(Area::new::<square_meter>(2e-5), 0.8)?;
+    c.bench_function("gas/orifice_transfer_air3", |bench| {
+        bench.iter(|| orifice_transfer(black_box(orifice), black_box(&a), black_box(&b)));
+    });
+    Ok(())
+}
+
 fn flow_benches(c: &mut Criterion) {
     // Criterion offers no error channel; report a setup failure instead of
     // skipping silently.
     if let Err(e) = flow(c) {
         let _ = writeln!(std::io::stderr(), "flow benchmarks skipped: {e:#}");
+    }
+    if let Err(e) = gas(c) {
+        let _ = writeln!(std::io::stderr(), "gas benchmarks skipped: {e:#}");
     }
 }
 
