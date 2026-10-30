@@ -45,6 +45,13 @@ pub enum PhysicsError {
     /// A gas composition is negative, non-finite or does not sum to one.
     #[error("invalid composition: {0}")]
     InvalidComposition(&'static str),
+    /// A geometric parameter (area, length) is non-physical.
+    #[error("invalid geometry: {0}")]
+    InvalidGeometry(&'static str),
+    /// A physical state or gas property (pressure, temperature, γ) is out of
+    /// its valid range.
+    #[error("invalid state: {0}")]
+    InvalidState(&'static str),
     /// A solver option is out of its valid range.
     #[error("invalid solver setting: {0}")]
     InvalidSetting(&'static str),
@@ -84,6 +91,14 @@ mod tests {
             (
                 PhysicsError::InvalidComposition("fractions sum to 0.5"),
                 "invalid composition: fractions sum to 0.5",
+            ),
+            (
+                PhysicsError::InvalidGeometry("exit area below throat area"),
+                "invalid geometry: exit area below throat area",
+            ),
+            (
+                PhysicsError::InvalidState("gamma must exceed 1"),
+                "invalid state: gamma must exceed 1",
             ),
             (
                 PhysicsError::InvalidSetting("rtol must be positive"),
