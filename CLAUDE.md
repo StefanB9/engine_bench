@@ -53,9 +53,14 @@ engine_bench/                          (workspace root)
     │       └── recording.rs           Columnar SI time series; rows redraw scenes for replay
     │
     └── engine-bench/                  (binary)
+        ├── tests/cli.rs               Integration: the real binary (list, run → export, errors)
         └── src/
-            ├── main.rs                Entry point
-            └── logging.rs             tracing setup (console, RUST_LOG override)
+            ├── main.rs                Entry point: subcommand, or GUI when none
+            ├── cli.rs                 clap: list, run, sweep, export
+            ├── commands.rs            Subcommand implementations, KEY=VALUE / sweep parsing
+            ├── recording_io.rs        Parquet read/write (polars) with engine metadata, CSV export
+            ├── units/                 Display units: table + presets, selection, parse "8 bar", format
+            └── logging.rs             tracing setup (stderr, RUST_LOG override)
 ```
 
 **Dependency boundary:** physics ← core ← engine-bench. Never reverse. Physics knows nothing about specific engines. Core has no binary-only dependencies (logging setup, CLI parsing, UI): engines describe what to draw as a renderer-agnostic `Scene`, and the binary renders it.
@@ -85,6 +90,9 @@ cargo clippy --workspace --all-targets        # Zero warnings required (includes
 cargo check --workspace --all-targets         # Type-check everything including tests
 cargo fmt --all -- --check                    # Format check
 cargo build -p engine-bench                   # Build the binary
+cargo run -p engine-bench -- list            # Engines; `list <engine>` shows controls and channels
+cargo run -p engine-bench -- run two-tank-demo --duration 10s --set valve=50% -o run.parquet
+cargo run -p engine-bench -- export run.parquet --csv run.csv --units engineering
 cargo bench -p engine-bench-physics --profile bench-unwind   # Kernel benchmarks (plain `cargo bench` fails: build-std + immediate-abort)
 ```
 
