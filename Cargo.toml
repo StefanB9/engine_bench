@@ -28,10 +28,13 @@ missing_panics_doc = "allow"
 anyhow = { version = "1.0.104", default-features = false, features = ["std"] }
 tracing = { version = "0.1.44", default-features = false, features = ["attributes", "std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt", "std"] }
+thiserror = { version = "2.0.21", default-features = false }
 uom = { version = "0.38.0", default-features = false, features = ["f64", "si", "std"] }
 
 # dev-only
 approx = { version = "0.5.1", default-features = false }
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 
 [profile.release]
 codegen-units = 1
@@ -56,3 +59,10 @@ overflow-checks = true
 panic = "unwind"
 rpath = true
 strip = false
+
+# Benchmarks: release optimisations with unwinding. The libtest/criterion harness needs
+# unwinding, and with `build-std` an `immediate-abort` std would be built alongside an
+# unwinding one and clash. Run with `cargo bench --profile bench-unwind`.
+[profile.bench-unwind]
+inherits = "release"
+panic = "unwind"

@@ -13,9 +13,15 @@ engine_bench/                          (workspace root)
 │
 └── crates/
     ├── engine-bench-physics/          (library — units, thermo, chemistry, numerics, solvers)
+    │   ├── benches/kernels.rs         criterion benchmarks of hot kernels (baseline, not a gate)
+    │   ├── proptest-regressions/      Saved proptest failure seeds (committed, re-run first)
     │   └── src/
     │       ├── lib.rs                 Module declarations
-    │       └── units.rs               uom SI quantities for public APIs
+    │       ├── error.rs               PhysicsError (thiserror), carried inside anyhow::Error
+    │       ├── units.rs               uom SI quantities for public APIs
+    │       └── numerics/
+    │           ├── roots.rs           Brent, bracketed Newton
+    │           └── ode/               OdeSystem, rk4_step, DormandPrince45 (dense output, events)
     │
     ├── engine-bench-core/             (library — engine models, Engine trait, Scene, recording)
     │   └── src/lib.rs                 Module declarations + re-exports
@@ -51,6 +57,7 @@ cargo clippy --workspace --all-targets        # Zero warnings required (includes
 cargo check --workspace --all-targets         # Type-check everything including tests
 cargo fmt --all -- --check                    # Format check
 cargo build -p engine-bench                   # Build the binary
+cargo bench -p engine-bench-physics --profile bench-unwind   # Kernel benchmarks (plain `cargo bench` fails: build-std + immediate-abort)
 ```
 
 **Always use `cargo nextest run` instead of `cargo test`.** Nextest is the project's test runner.
@@ -111,6 +118,7 @@ cargo build -p engine-bench                   # Build the binary
 - **Retryable errors:** Expose `is_retryable()` on error enums that cover transient failures.
 - **Forbidden everywhere (including tests):** `.unwrap()`, `.expect()`, `panic!()`, `todo!()` — enforced by lints with `--all-targets`.
 - **Fallible constructors:** Return `Result<Self>` not `Self`. Validate inputs at construction.
+- **Hot-path kernels are infallible.** Property evaluation, fluxes and ODE derivatives run millions of times per second and take already-validated inputs; they return plain values, not `Result`. Validation happens at the edges: constructors and solver steps (`step()`, `solve()`) return `Result` and check for out-of-range or non-finite state.
 
 ## Coding Standards
 
