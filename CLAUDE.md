@@ -40,7 +40,14 @@ engine_bench/                          (workspace root)
     │           └── mixture/           Mixture<S, N>: composition, properties, T from u / h
     │
     ├── engine-bench-core/             (library — engine models, Engine trait, Scene, recording)
-    │   └── src/lib.rs                 Module declarations + re-exports
+    │   └── src/
+    │       ├── lib.rs                 Module declarations
+    │       ├── error.rs               CoreError (thiserror)
+    │       ├── spec/                  QuantityKind, ControlSpec, ChannelSpec (+ role), StepContext
+    │       ├── engine/                Engine trait, EngineId (registry + draw), AnyEngine dispatch
+    │       ├── engines/               Engine models: two_tank (demo) = model, spec, dynamics, draw
+    │       ├── scene.rs               Renderer-agnostic display list (world metres, semantic fills)
+    │       └── recording.rs           Columnar SI time series; rows redraw scenes for replay
     │
     └── engine-bench/                  (binary)
         └── src/
@@ -49,6 +56,8 @@ engine_bench/                          (workspace root)
 ```
 
 **Dependency boundary:** physics ← core ← engine-bench. Never reverse. Physics knows nothing about specific engines. Core has no binary-only dependencies (logging setup, CLI parsing, UI): engines describe what to draw as a renderer-agnostic `Scene`, and the binary renders it.
+
+**Scenes come from channels:** an engine's scene is drawn by `EngineId::draw(sample)` from its channel values only, never from engine internals. Everything a scene needs (geometry included) must be a channel (`ChannelRole::SceneState` if not worth plotting), so live view and replay of a recording run the same code. Bump `EngineDescriptor::schema_version` whenever an engine's channel list changes.
 
 **Units:** `uom` quantities (re-exported from `engine_bench_physics::units`) in all public APIs. Hot kernels unwrap to raw `f64` struct-of-arrays and re-wrap on output.
 

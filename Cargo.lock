@@ -219,6 +219,9 @@ name = "engine-bench-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "engine-bench-physics",
+ "proptest",
+ "thiserror",
 ]
 
 [[package]]
