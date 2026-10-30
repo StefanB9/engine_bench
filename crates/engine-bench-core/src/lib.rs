@@ -6,9 +6,12 @@
 //! their channels, so the live view and replay of a recording run the same
 //! code.
 
+pub mod clock;
 pub mod engine;
 pub mod engines;
 pub mod error;
+pub mod offline;
+pub mod pacer;
 pub mod recording;
 pub mod scene;
 pub mod spec;
