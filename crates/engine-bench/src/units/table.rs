@@ -93,6 +93,11 @@ const FORCE: [DisplayUnit; 3] = [
     unit("kN", 1e-3),
     unit("lbf", 1.0 / POUND_FORCE),
 ];
+const IMPULSE: [DisplayUnit; 3] = [
+    unit("N·s", 1.0),
+    unit("kN·s", 1e-3),
+    unit("lbf·s", 1.0 / POUND_FORCE),
+];
 const VELOCITY: [DisplayUnit; 4] = [
     unit("m/s", 1.0),
     unit("km/h", 3.6),
@@ -131,11 +136,12 @@ pub(crate) fn units(kind: QuantityKind) -> &'static [DisplayUnit] {
         QuantityKind::Velocity => &VELOCITY,
         QuantityKind::AngularVelocity => &ANGULAR_VELOCITY,
         QuantityKind::HeatTransferCoefficient => &HEAT_TRANSFER_COEFFICIENT,
+        QuantityKind::Impulse => &IMPULSE,
     }
 }
 
 /// Symbols chosen by the engineering preset, in `QuantityKind::ALL` order.
-const ENGINEERING: [&str; 15] = [
+const ENGINEERING: [&str; 16] = [
     "%",
     "s",
     "mm",
@@ -151,10 +157,11 @@ const ENGINEERING: [&str; 15] = [
     "m/s",
     "rpm",
     "W/(m²·K)",
+    "N·s",
 ];
 
 /// Symbols chosen by the imperial preset, in `QuantityKind::ALL` order.
-const IMPERIAL: [&str; 15] = [
+const IMPERIAL: [&str; 16] = [
     "%",
     "s",
     "in",
@@ -170,6 +177,7 @@ const IMPERIAL: [&str; 15] = [
     "ft/s",
     "rpm",
     "BTU/(h·ft²·°F)",
+    "lbf·s",
 ];
 
 /// Preset symbol for `kind`: `None` means SI.
@@ -183,7 +191,11 @@ pub(super) fn preset_symbol(preset: super::Preset, kind: QuantityKind) -> Option
 }
 
 /// ASCII spellings accepted when parsing, mapped to their symbols.
-pub(super) const ALIASES: [(&str, &str); 14] = [
+pub(super) const ALIASES: [(&str, &str); 18] = [
+    ("Ns", "N·s"),
+    ("N*s", "N·s"),
+    ("kNs", "kN·s"),
+    ("lbfs", "lbf·s"),
     ("m2", "m²"),
     ("cm2", "cm²"),
     ("mm2", "mm²"),

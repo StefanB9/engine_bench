@@ -129,6 +129,7 @@ pub(crate) fn quantity_name(kind: QuantityKind) -> &'static str {
         QuantityKind::Velocity => "velocity",
         QuantityKind::AngularVelocity => "angular_velocity",
         QuantityKind::HeatTransferCoefficient => "heat_transfer_coefficient",
+        QuantityKind::Impulse => "impulse",
     }
 }
 
@@ -245,6 +246,7 @@ mod tests {
         close(si(K::Temperature, "°F", 212.0)?, 373.15, 1e-12)?;
         close(si(K::Power, "hp", 1.0)?, 745.699_871_582_270_2, 1e-12)?;
         close(si(K::Force, "lbf", 1.0)?, 4.448_221_615_260_5, 1e-12)?;
+        close(si(K::Impulse, "lbf·s", 1.0)?, 4.448_221_615_260_5, 1e-12)?;
         close(
             si(K::AngularVelocity, "rpm", 3000.0)?,
             314.159_265_358_979_3,

@@ -34,11 +34,13 @@ pub enum QuantityKind {
     AngularVelocity,
     /// W/(m²·K).
     HeatTransferCoefficient,
+    /// N·s.
+    Impulse,
 }
 
 impl QuantityKind {
     /// Every kind, for unit pickers and exhaustive tests.
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Ratio,
         Self::Time,
         Self::Length,
@@ -54,6 +56,7 @@ impl QuantityKind {
         Self::Velocity,
         Self::AngularVelocity,
         Self::HeatTransferCoefficient,
+        Self::Impulse,
     ];
 
     /// Symbol of the SI unit values are stored in (empty for dimensionless).
@@ -74,6 +77,7 @@ impl QuantityKind {
             Self::Velocity => "m/s",
             Self::AngularVelocity => "rad/s",
             Self::HeatTransferCoefficient => "W/(m²·K)",
+            Self::Impulse => "N·s",
         }
     }
 }
@@ -100,6 +104,7 @@ mod tests {
             "m/s",
             "rad/s",
             "W/(m²·K)",
+            "N·s",
         ];
         anyhow::ensure!(expected.len() == QuantityKind::ALL.len(), "kind count");
         for (kind, symbol) in QuantityKind::ALL.into_iter().zip(expected) {
