@@ -75,9 +75,12 @@ engine_bench/                          (workspace root)
     │       ├── clock.rs               Clock trait: SystemClock, MockClock (set_time / advance)
     │       ├── pacer.rs               RealTimePacer: wall time → fixed physics steps, cap, scale
     │       ├── offline.rs             Batch run() and parallel sweep() → Recording
-    │       ├── spec/                  QuantityKind, ControlSpec, ChannelSpec (+ role), StepContext
+    │       ├── spec/                  QuantityKind, ControlSpec (continuous, toggle, trigger,
+    │       │                          choice), ChannelSpec (+ role), StepContext
     │       ├── engine/                Engine trait, EngineId (registry + draw), AnyEngine dispatch
-    │       ├── engines/               Engine models: two_tank (demo) = model, spec, dynamics, draw
+    │       ├── engines/               Engine models: two_tank (demo) = model, spec, dynamics, draw;
+    │       │                          cold_gas (catalogue #2): tank, regulator, valve, nozzle
+    │       │                          (+ hardware, fluids: tables or exact, tests.rs)
     │       ├── scene.rs               Renderer-agnostic display list (world metres, semantic fills,
     │       │                          optional view rectangle, else fit to bounds)
     │       └── recording.rs           Columnar SI time series; rows redraw scenes for replay
