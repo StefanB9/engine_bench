@@ -5,11 +5,13 @@
 //! real-gas departures for dense mixtures.
 
 pub mod peng_robinson;
+mod reference;
 
 use std::fmt::Debug;
 
 use anyhow::Context;
 pub use peng_robinson::PengRobinson;
+pub use reference::Reference;
 
 use crate::{
     PhysicsError,
@@ -17,7 +19,11 @@ use crate::{
     thermo::{Mixture, SpeciesSet},
 };
 
-/// Per-mass state of a gas from an equation of state, raw SI.
+/// Per-mass state of a fluid from an equation of state, raw SI.
+///
+/// `h`, `cp`, `cv` and `gas_constant` describe what leaves through a port at
+/// the top of the volume: the bulk for one phase, saturated vapour inside the
+/// two-phase dome.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FluidState {
     /// K.
@@ -37,6 +43,10 @@ pub struct FluidState {
     /// p·v / T, J/(kg·K): the mixture gas constant for an ideal gas, Z times it
     /// for a real one.
     pub(crate) gas_constant: f64,
+    /// Vapour mass fraction inside the dome; NaN for one phase.
+    pub(crate) quality: f64,
+    /// Fraction of the volume filled with liquid (1 for a dense single phase).
+    pub(crate) liquid_fraction: f64,
 }
 
 impl FluidState {
@@ -50,6 +60,8 @@ impl FluidState {
         cp: f64::NAN,
         cv: f64::NAN,
         gas_constant: f64::NAN,
+        quality: f64::NAN,
+        liquid_fraction: f64::NAN,
     };
 
     /// Frozen perfect-gas stand-in for orifice and nozzle flow: γ = `c_p/c_v`
@@ -82,6 +94,19 @@ pub trait EquationOfState<S: SpeciesSet<N>, const N: usize>: Copy + Debug + Part
 
     /// Specific entropy, J/(kg·K), of `state`.
     fn entropy(&self, mixture: &Mixture<S, N>, state: &FluidState) -> f64;
+
+    /// Saturated liquid and vapour at `t` K, the liquid filling
+    /// `liquid_fraction` of the volume. Only equations with a two-phase
+    /// region have one.
+    fn state_saturated(
+        &self,
+        mixture: &Mixture<S, N>,
+        t: f64,
+        liquid_fraction: f64,
+    ) -> anyhow::Result<FluidState> {
+        let _ = (mixture, t, liquid_fraction);
+        Err(PhysicsError::InvalidState("this equation of state has no two-phase states").into())
+    }
 }
 
 /// The ideal gas: p = `ρRT`, u and h from the NASA polynomials alone.
@@ -134,6 +159,8 @@ fn ideal_state<S: SpeciesSet<N>, const N: usize>(
         cp,
         cv: cp - r,
         gas_constant: r,
+        quality: f64::NAN,
+        liquid_fraction: 0.0,
     }
 }
 

@@ -8,7 +8,12 @@ use std::{hint::black_box, io::Write as _};
 use criterion::{Criterion, criterion_group, criterion_main};
 use engine_bench_physics::{
     flow::{Nozzle, Orifice, PerfectGas, Reservoir},
-    gas::{ControlVolume, eos::PengRobinson, orifice_transfer},
+    fluid::PureFluid,
+    gas::{
+        ControlVolume,
+        eos::{PengRobinson, Reference},
+        orifice_transfer,
+    },
     numerics::{
         ode::{AdaptiveOptions, DormandPrince45, NoEvents, OdeSystem, rk4_step},
         roots::{RootOptions, brent, newton_bracketed},
@@ -192,6 +197,49 @@ fn gas(c: &mut Criterion) -> anyhow::Result<()> {
             n2.pressure()
         });
     });
+    // Reference equations: dense N2, and a two-phase CO2 bottle.
+    let mut n2_ref = ControlVolume::with_eos(
+        Reference::new(PureFluid::Nitrogen)?,
+        Mixture::<ColdGas, 4>::from_mass_fractions([1.0, 0.0, 0.0, 0.0])?,
+        Pressure::new::<pascal>(2e7),
+        ThermodynamicTemperature::new::<kelvin>(300.0),
+        Volume::new::<cubic_meter>(0.01),
+    )?;
+    let (ref_masses, ref_energy) = (
+        *n2_ref.species_masses(),
+        n2_ref.internal_energy().get::<joule>(),
+    );
+    c.bench_function("control_volume/set_conserved_reference_n2", |bench| {
+        bench.iter(|| {
+            n2_ref.set_conserved(
+                black_box(&ref_masses),
+                black_box(ref_energy * 1.000_001),
+                0.01,
+            );
+            n2_ref.pressure()
+        });
+    });
+    let mut co2 = ControlVolume::with_saturated(
+        Reference::new(PureFluid::CarbonDioxide)?,
+        Mixture::<ColdGas, 4>::from_mass_fractions([0.0, 0.0, 0.0, 1.0])?,
+        ThermodynamicTemperature::new::<kelvin>(290.0),
+        Ratio::new::<ratio>(0.6),
+        Volume::new::<cubic_meter>(1e-3),
+    )?;
+    let (co2_masses, co2_energy) = (*co2.species_masses(), co2.internal_energy().get::<joule>());
+    c.bench_function(
+        "control_volume/set_conserved_reference_co2_two_phase",
+        |bench| {
+            bench.iter(|| {
+                co2.set_conserved(
+                    black_box(&co2_masses),
+                    black_box(co2_energy * 1.000_001),
+                    1e-3,
+                );
+                co2.pressure()
+            });
+        },
+    );
     let orifice = Orifice::new(Area::new::<square_meter>(2e-5), 0.8)?;
     c.bench_function("gas/orifice_transfer_air3", |bench| {
         bench.iter(|| orifice_transfer(black_box(orifice), black_box(&a), black_box(&b)));

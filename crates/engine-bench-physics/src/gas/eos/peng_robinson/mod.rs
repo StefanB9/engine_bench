@@ -90,6 +90,8 @@ impl<S: SpeciesSet<N>, const N: usize> PengRobinson<S, N> {
             cp,
             cv,
             gas_constant: m.p * v / t,
+            quality: f64::NAN,
+            liquid_fraction: 0.0,
         }
     }
 }

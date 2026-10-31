@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc baef82408330fea47880adc6404c116472175e4bc0d6a32ce5e9d719c46be1b5 # shrinks to fluid = Nitrogen, delta = 0.05, tau = 0.3
+cc 5b29b4412fd395ead87c839c86c74873cd644a8449f147aaa65b43a5e0037744 # shrinks to fluid = CarbonDioxide, delta = 0.9656895381757025, tau = 1.0001509756213351
+cc ed82a15f7f38dfc44e0da54fc2d4f6b15767ff7791feec9222dd094f86379296 # shrinks to fluid = CarbonDioxide, delta = 0.9085682967222678, tau = 1.1276663500542257
+cc 94515db58fc7e0da7c8552d2de8a9346962cd44258222882de632d5b3be6e20c # shrinks to fluid = CarbonDioxide, delta = 1.2041831062544694, tau = 1.3791474349781165
