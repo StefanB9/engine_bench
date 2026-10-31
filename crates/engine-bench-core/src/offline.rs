@@ -69,16 +69,51 @@ impl RunSettings {
     }
 }
 
+/// Receives the progress of batch runs, from whichever thread runs them.
+pub trait Progress: Sync {
+    /// Run `run` (its index among a sweep's values; 0 for a single run) has
+    /// recorded `done` of its `total` rows.
+    fn recorded(&self, run: usize, done: u32, total: u32);
+}
+
+/// Progress nobody watches.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NoProgress;
+
+impl Progress for NoProgress {
+    fn recorded(&self, _run: usize, _done: u32, _total: u32) {}
+}
+
 /// Runs engine `id` with `controls` applied (then reset, so initial conditions
 /// take effect) and records every channel.
-///
-/// Each advance spans the difference of consecutive exact row times rather than
-/// a fixed interval, so the engine's own clock stays locked to the row times
-/// over long runs.
 pub fn run(
     id: EngineId,
     controls: &[(ControlId, f64)],
     settings: &RunSettings,
+) -> anyhow::Result<Recording> {
+    run_with_progress(id, controls, settings, &NoProgress)
+}
+
+/// [`run`], reporting every recorded row to `progress`.
+///
+/// Each advance spans the difference of consecutive exact row times rather than
+/// a fixed interval, so the engine's own clock stays locked to the row times
+/// over long runs.
+pub fn run_with_progress(
+    id: EngineId,
+    controls: &[(ControlId, f64)],
+    settings: &RunSettings,
+    progress: &impl Progress,
+) -> anyhow::Result<Recording> {
+    run_indexed(id, controls, settings, progress, 0)
+}
+
+fn run_indexed(
+    id: EngineId,
+    controls: &[(ControlId, f64)],
+    settings: &RunSettings,
+    progress: &impl Progress,
+    index_in_sweep: usize,
 ) -> anyhow::Result<Recording> {
     let mut engine = AnyEngine::new(id)?;
     for &(control, value) in controls {
@@ -89,6 +124,7 @@ pub fn run(
     let mut sample = vec![0.0; id.channels().len()];
     engine.sample(&mut sample)?;
     recording.push(settings.row_time(0), &sample)?;
+    progress.recorded(index_in_sweep, 1, settings.rows);
     for index in 1..settings.rows {
         let dt = settings.row_time(index) - settings.row_time(index - 1);
         engine
@@ -96,6 +132,7 @@ pub fn run(
             .with_context(|| format!("advancing to t = {} s", settings.row_time(index)))?;
         engine.sample(&mut sample)?;
         recording.push(settings.row_time(index), &sample)?;
+        progress.recorded(index_in_sweep, index + 1, settings.rows);
     }
     Ok(recording)
 }
@@ -109,17 +146,31 @@ pub fn sweep(
     values: &[f64],
     settings: &RunSettings,
 ) -> anyhow::Result<Vec<Recording>> {
+    sweep_with_progress(id, controls, varied, values, settings, &NoProgress)
+}
+
+/// [`sweep`], reporting every recorded row of every run to `progress`, run
+/// by its index in `values`.
+pub fn sweep_with_progress(
+    id: EngineId,
+    controls: &[(ControlId, f64)],
+    varied: ControlId,
+    values: &[f64],
+    settings: &RunSettings,
+    progress: &impl Progress,
+) -> anyhow::Result<Vec<Recording>> {
     if values.is_empty() {
         return Err(CoreError::InvalidSetting("sweep needs at least one value").into());
     }
     let workers = std::thread::available_parallelism()
         .map_or(1, std::num::NonZero::get)
         .min(values.len());
-    let one = |value: f64| -> anyhow::Result<Recording> {
+    let one = |index: usize, value: f64| -> anyhow::Result<Recording> {
         let mut variant = Vec::with_capacity(controls.len() + 1);
         variant.extend_from_slice(controls);
         variant.push((varied, value));
-        run(id, &variant, settings).with_context(|| format!("sweep value {value}"))
+        run_indexed(id, &variant, settings, progress, index)
+            .with_context(|| format!("sweep value {value}"))
     };
     // Static striding: worker w runs values w, w + workers, …; no shared
     // mutable state.
@@ -131,7 +182,7 @@ pub fn sweep(
                 scope.spawn(move || {
                     (worker..values.len())
                         .step_by(workers)
-                        .map(|index| (index, one(values[index])))
+                        .map(|index| (index, one(index, values[index])))
                         .collect::<Vec<_>>()
                 })
             })
@@ -319,6 +370,64 @@ mod tests {
         anyhow::ensure!(
             format!("{e:#}").contains('3'),
             "error does not name the value: {e:#}"
+        );
+        Ok(())
+    }
+
+    /// Every report, in order.
+    #[derive(Default)]
+    struct Reports(std::sync::Mutex<Vec<(usize, u32, u32)>>);
+
+    impl Progress for Reports {
+        fn recorded(&self, run: usize, done: u32, total: u32) {
+            if let Ok(mut reports) = self.0.lock() {
+                reports.push((run, done, total));
+            }
+        }
+    }
+
+    impl Reports {
+        fn taken(&self) -> anyhow::Result<Vec<(usize, u32, u32)>> {
+            Ok(self
+                .0
+                .lock()
+                .map_err(|_| anyhow::anyhow!("poisoned"))?
+                .clone())
+        }
+    }
+
+    #[test]
+    fn test_run_reports_every_recorded_row() -> anyhow::Result<()> {
+        let s = settings(0.5, 10.0)?;
+        let reports = Reports::default();
+        let recording = run_with_progress(DEMO, &[], &s, &reports)?;
+        let expected: Vec<(usize, u32, u32)> = (1..=6).map(|done| (0, done, 6)).collect();
+        anyhow::ensure!(reports.taken()? == expected, "{:?}", reports.taken()?);
+        // The same recording as without progress.
+        anyhow::ensure!(recording == run(DEMO, &[], &s)?, "recording differs");
+        NoProgress.recorded(0, 1, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn test_sweep_reports_each_run_by_its_index() -> anyhow::Result<()> {
+        let valve = control("valve")?;
+        let s = settings(0.2, 10.0)?;
+        let reports = Reports::default();
+        let values = [0.2, 0.6, 1.0];
+        sweep_with_progress(DEMO, &[], valve, &values, &s, &reports)?;
+        let reports = reports.taken()?;
+        for index in 0..values.len() {
+            let mine: Vec<u32> = reports
+                .iter()
+                .filter(|(run, _, _)| *run == index)
+                .map(|(_, done, _)| *done)
+                .collect();
+            anyhow::ensure!(mine == [1, 2, 3], "run {index}: {mine:?}");
+        }
+        anyhow::ensure!(
+            reports.iter().all(|(_, _, total)| *total == 3),
+            "{reports:?}"
         );
         Ok(())
     }

@@ -74,7 +74,7 @@ engine_bench/                          (workspace root)
     │       ├── error.rs               CoreError (thiserror)
     │       ├── clock.rs               Clock trait: SystemClock, MockClock (set_time / advance)
     │       ├── pacer.rs               RealTimePacer: wall time → fixed physics steps, cap, scale
-    │       ├── offline.rs             Batch run() and parallel sweep() → Recording
+    │       ├── offline.rs             Batch run() and parallel sweep() → Recording; Progress trait
     │       ├── spec/                  QuantityKind, ControlSpec (continuous, toggle, trigger,
     │       │                          choice), ChannelSpec (+ role), StepContext
     │       ├── engine/                Engine trait, EngineId (registry + draw), AnyEngine dispatch
@@ -100,6 +100,7 @@ engine_bench/                          (workspace root)
             │   └── replay.rs          Replay cursor/playback over a RecordingFile
             ├── cli.rs                 clap: list, run, sweep, export
             ├── commands.rs            Subcommand implementations, KEY=VALUE / sweep parsing
+            ├── progress.rs            indicatif bars for run/sweep: simulated time, speed, time left
             ├── recording_io.rs        Parquet read/write (polars) with engine metadata, CSV export
             ├── units/                 Display units: table + presets, selection, parse "8 bar", format
             └── logging.rs             tracing setup (stderr, RUST_LOG override)

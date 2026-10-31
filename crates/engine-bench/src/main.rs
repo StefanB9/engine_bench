@@ -5,6 +5,7 @@ mod cli;
 mod commands;
 mod gui;
 mod logging;
+mod progress;
 mod recording_io;
 mod units;
 
