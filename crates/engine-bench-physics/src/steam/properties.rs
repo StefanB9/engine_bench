@@ -3,8 +3,12 @@
 use anyhow::Context;
 
 use super::{
+    T_REGION3_MIN,
     gibbs::{self, RawProperties},
+    helmholtz::region3,
     region::{Region, region_si, validate_pt},
+    region3::{density_si, saturated_si},
+    region3_backward::Side,
 };
 use crate::{
     PhysicsError,
@@ -65,8 +69,7 @@ impl SteamProperties {
 
 /// Properties of water or steam at pressure `p` and temperature `t`.
 ///
-/// Fails outside IF97's range, and for now in region 3 (near-critical), which
-/// follows in the next step of milestone 3.
+/// Fails outside IF97's range.
 pub fn properties(p: Pressure, t: ThermodynamicTemperature) -> anyhow::Result<SteamProperties> {
     let (p, t) = (p.get::<pascal>(), t.get::<kelvin>());
     validate_pt(p, t).context("steam properties")?;
@@ -82,15 +85,43 @@ pub(crate) fn properties_si(region: Region, p: f64, t: f64) -> anyhow::Result<Ra
         Region::CompressedLiquid => Ok(gibbs::region1(p, t)),
         Region::Vapour => Ok(gibbs::region2(p, t)),
         Region::HighTemperature => Ok(gibbs::region5(p, t)),
-        Region::NearCritical => Err(PhysicsError::InvalidState(
-            "IF97 region 3 (near-critical) is not supported yet",
-        )
-        .into()),
+        Region::NearCritical => {
+            let rho = density_si(p, t, Side::Either)?;
+            Ok(region3(rho, t).properties)
+        }
         Region::Saturation => Err(PhysicsError::InvalidState(
             "a saturated state needs a quality, not just (p, T)",
         )
         .into()),
     }
+}
+
+/// Saturated liquid and vapour at one temperature.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Saturated {
+    /// Saturation pressure.
+    pub pressure: Pressure,
+    /// Saturated liquid.
+    pub liquid: SteamProperties,
+    /// Saturated vapour.
+    pub vapour: SteamProperties,
+}
+
+/// Saturated liquid and vapour at temperature `t`, from 273.15 K up to the
+/// critical point (regions 1 and 2 up to 623.15 K, region 3 above).
+pub fn saturated(t: ThermodynamicTemperature) -> anyhow::Result<Saturated> {
+    let t = t.get::<kelvin>();
+    let (p, liquid, vapour) = saturated_si(t).context("saturated liquid and vapour")?;
+    let (liquid_region, vapour_region) = if t <= T_REGION3_MIN {
+        (Region::CompressedLiquid, Region::Vapour)
+    } else {
+        (Region::NearCritical, Region::NearCritical)
+    };
+    Ok(Saturated {
+        pressure: Pressure::new::<pascal>(p),
+        liquid: SteamProperties::from_raw(liquid_region, liquid),
+        vapour: SteamProperties::from_raw(vapour_region, vapour),
+    })
 }
 
 #[cfg(test)]
@@ -135,9 +166,34 @@ mod tests {
     }
 
     #[test]
-    fn test_properties_reports_region_3_as_not_supported_yet() -> anyhow::Result<()> {
-        let error = at(25e6, 650.0).err().context("region 3 accepted")?;
-        anyhow::ensure!(format!("{error:#}").contains("region 3"), "{error:#}");
+    fn test_properties_solves_region_3_from_p_and_t() -> anyhow::Result<()> {
+        // IAPWS R7-97(2012) Table 33, first row, entered as (p, T).
+        let x = at(25.583_701_8e6, 650.0)?;
+        anyhow::ensure!(x.region == Region::NearCritical, "{:?}", x.region);
+        let rho = x.density().get::<kilogram_per_cubic_meter>();
+        let h = x.enthalpy.get::<joule_per_kilogram>();
+        anyhow::ensure!((rho / 500.0 - 1.0).abs() < 1e-8, "ρ = {rho}");
+        anyhow::ensure!((h / 1_863_430.19 - 1.0).abs() < 5e-8, "h = {h}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_saturated_marks_the_region_of_each_phase() -> anyhow::Result<()> {
+        for (t, liquid, vapour) in [
+            (500.0, Region::CompressedLiquid, Region::Vapour),
+            (640.0, Region::NearCritical, Region::NearCritical),
+        ] {
+            let sat = saturated(ThermodynamicTemperature::new::<kelvin>(t))?;
+            anyhow::ensure!(
+                sat.liquid.region == liquid && sat.vapour.region == vapour,
+                "{t} K: {sat:?}"
+            );
+            anyhow::ensure!(sat.liquid.density() > sat.vapour.density(), "{t} K");
+        }
+        anyhow::ensure!(
+            saturated(ThermodynamicTemperature::new::<kelvin>(650.0)).is_err(),
+            "650 K"
+        );
         Ok(())
     }
 

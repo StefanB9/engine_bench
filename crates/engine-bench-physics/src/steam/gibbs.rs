@@ -29,6 +29,10 @@ pub(crate) struct RawProperties {
     pub(crate) cv: f64,
     /// Speed of sound, m/s.
     pub(crate) w: f64,
+    /// (∂v/∂p) at constant T, m³/(kg·Pa).
+    pub(crate) dv_dp: f64,
+    /// (∂v/∂T) at constant p, m³/(kg·K).
+    pub(crate) dv_dt: f64,
 }
 
 /// Region 1 (compressed liquid) properties.
@@ -101,6 +105,8 @@ impl Gibbs {
             cp: -R * tau2_g_tt,
             cv: R * (x * x / self.g_pp - tau2_g_tt),
             w: (rt * self.g_p * self.g_p / (x * x / tau2_g_tt - self.g_pp)).sqrt(),
+            dv_dp: rt * self.g_pp / (p_star * p_star),
+            dv_dt: R * x / p_star,
         }
     }
 }
@@ -294,6 +300,33 @@ mod tests {
             let x = kernel(p, t);
             let error = (x.u - (x.h - p * x.v)).abs() / x.h.abs();
             anyhow::ensure!(error < 1e-13, "u ≠ h − pv at {p} Pa, {t} K: rel {error:e}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_gibbs_volume_derivatives_match_central_differences() -> anyhow::Result<()> {
+        for (kernel, p, t) in [
+            (region1 as fn(f64, f64) -> RawProperties, 5e6, 400.0),
+            (region1, 80e6, 600.0),
+            (region2, 1e5, 500.0),
+            (region2, 30e6, 800.0),
+            (region5, 1e7, 1800.0),
+        ] {
+            let x = kernel(p, t);
+            let (dp, dt) = (1e-5 * p, 1e-4 * t);
+            let slope_p = (kernel(p + dp, t).v - kernel(p - dp, t).v) / (2.0 * dp);
+            let slope_t = (kernel(p, t + dt).v - kernel(p, t - dt).v) / (2.0 * dt);
+            anyhow::ensure!(
+                (x.dv_dp / slope_p - 1.0).abs() < 1e-6,
+                "dv/dp at {p} Pa, {t} K: {} vs {slope_p}",
+                x.dv_dp
+            );
+            anyhow::ensure!(
+                (x.dv_dt / slope_t - 1.0).abs() < 1e-6,
+                "dv/dT at {p} Pa, {t} K: {} vs {slope_t}",
+                x.dv_dt
+            );
         }
         Ok(())
     }

@@ -5,7 +5,8 @@ use anyhow::Context;
 use engine_bench_physics::{
     steam::{self, Region},
     units::{
-        Pressure, ThermodynamicTemperature, available_energy::joule_per_kilogram, pressure::pascal,
+        AvailableEnergy, Pressure, SpecificVolume, ThermodynamicTemperature,
+        available_energy::joule_per_kilogram, pressure::pascal,
         specific_heat_capacity::joule_per_kilogram_kelvin,
         specific_volume::cubic_meter_per_kilogram, thermodynamic_temperature::kelvin,
         velocity::meter_per_second,
@@ -746,6 +747,220 @@ const GOLDEN: &[[f64; 9]] = &[
     ],
 ];
 
+// Region 3: CoolProp's p is from the non-iterated backward equation; check from
+// (u, v).
+#[allow(clippy::unreadable_literal, reason = "generated golden values")]
+const GOLDEN_REGION3: &[[f64; 9]] = &[
+    // region 3
+    [
+        2.200000000000e+07,
+        6.300000000000e+02,
+        1.713690065236e-03,
+        1.691015135366e+06,
+        1.653314345466e+06,
+        3.795371605696e+03,
+        8.655044594722e+03,
+        3.061041800182e+03,
+        6.369565395990e+02,
+    ],
+    [
+        2.500000000000e+07,
+        6.300000000000e+02,
+        1.662134739939e-03,
+        1.673840558524e+06,
+        1.632287197759e+06,
+        3.760078982001e+03,
+        7.663810637691e+03,
+        3.011349814430e+03,
+        6.938687484123e+02,
+    ],
+    [
+        4.000000000000e+07,
+        6.300000000000e+02,
+        1.523840030129e-03,
+        1.628749265594e+06,
+        1.567795131917e+06,
+        3.650806334850e+03,
+        5.939870940667e+03,
+        2.924989220592e+03,
+        8.696197438801e+02,
+    ],
+    [
+        9.000000000000e+07,
+        6.300000000000e+02,
+        1.347887962781e-03,
+        1.587533525694e+06,
+        1.466226932497e+06,
+        3.472636020712e+03,
+        4.735316090525e+03,
+        2.866100569336e+03,
+        1.173992305728e+03,
+    ],
+    [
+        2.200000000000e+07,
+        6.500000000000e+02,
+        5.490712750666e-03,
+        2.428958305439e+06,
+        2.308162588907e+06,
+        4.939578720893e+03,
+        3.082681941898e+04,
+        3.862538130791e+03,
+        3.979166828311e+02,
+    ],
+    [
+        2.500000000000e+07,
+        6.500000000000e+02,
+        2.045512416876e-03,
+        1.876359116409e+06,
+        1.825221305482e+06,
+        4.075978990140e+03,
+        1.573102317632e+04,
+        3.244066624005e+03,
+        4.789802651530e+02,
+    ],
+    [
+        4.000000000000e+07,
+        6.500000000000e+02,
+        1.655910215161e-03,
+        1.755116086489e+06,
+        1.688878866126e+06,
+        3.848203136756e+03,
+        6.770721470044e+03,
+        2.921583141241e+03,
+        7.633461445606e+02,
+    ],
+    [
+        9.000000000000e+07,
+        6.500000000000e+02,
+        1.402449724842e-03,
+        1.683663455652e+06,
+        1.557443870064e+06,
+        3.622835564358e+03,
+        4.878867639365e+03,
+        2.837325049923e+03,
+        1.113477394246e+03,
+    ],
+    [
+        4.000000000000e+07,
+        7.000000000000e+02,
+        2.610166823549e-03,
+        2.222488881698e+06,
+        2.118082349702e+06,
+        4.537924103886e+03,
+        1.301710355025e+04,
+        3.043328439643e+03,
+        5.051780211125e+02,
+    ],
+    [
+        9.000000000000e+07,
+        7.000000000000e+02,
+        1.580548029212e-03,
+        1.937352041138e+06,
+        1.795101777233e+06,
+        3.998650969225e+03,
+        5.294522484362e+03,
+        2.757852392866e+03,
+        9.645213325160e+02,
+    ],
+    [
+        9.000000000000e+07,
+        8.000000000000e+02,
+        2.239432432639e-03,
+        2.509599375514e+06,
+        2.308049382092e+06,
+        4.761754729502e+03,
+        5.916633977588e+03,
+        2.618872844633e+03,
+        7.597067551333e+02,
+    ],
+];
+
+// Saturated liquid and vapour: T K, p Pa, v', v'' m³/kg, h', h'' J/kg, s', s''
+// J/(kg·K).
+#[allow(clippy::unreadable_literal, reason = "generated golden values")]
+const SATURATED: &[[f64; 8]] = &[
+    [
+        2.731600000000e+02,
+        6.116570000107e+02,
+        1.000206297144e-03,
+        2.059974594854e+02,
+        6.117830489016e-01,
+        2.500910994639e+06,
+        -6.161029095279e-05,
+        9.155491473736e+03,
+    ],
+    [
+        3.000000000000e+02,
+        3.536589413013e+03,
+        1.003497929934e-03,
+        3.908205832378e+01,
+        1.125749908124e+05,
+        2.549893008307e+06,
+        3.931236014741e+02,
+        8.517536685029e+03,
+    ],
+    [
+        3.731500000000e+02,
+        1.014179779213e+05,
+        1.043455456611e-03,
+        1.671860601094e+00,
+        4.190991549977e+05,
+        2.675572029221e+06,
+        1.307014327841e+03,
+        7.354077050958e+03,
+    ],
+    [
+        4.500000000000e+02,
+        9.320410791359e+05,
+        1.123157852004e-03,
+        2.078349875426e-01,
+        7.492933396800e+05,
+        2.774410189059e+06,
+        2.108946203399e+03,
+        6.609222428888e+03,
+    ],
+    [
+        5.500000000000e+02,
+        6.117055639659e+06,
+        1.323090930577e-03,
+        3.177346769919e-02,
+        1.220269278420e+06,
+        2.783269213055e+06,
+        3.039059495106e+03,
+        5.880873712687e+03,
+    ],
+    [
+        6.000000000000e+02,
+        1.234431457838e+07,
+        1.539857654473e-03,
+        1.373387900650e-02,
+        1.505216655399e+06,
+        2.677992201695e+06,
+        3.518769312372e+03,
+        5.473394561627e+03,
+    ],
+    [
+        6.200000000000e+02,
+        1.590022217779e+07,
+        1.704007057731e-03,
+        9.406575598062e-03,
+        1.645703442054e+06,
+        2.583943980995e+06,
+        3.739554791412e+03,
+        5.252837994253e+03,
+    ],
+    [
+        6.231500000000e+02,
+        1.652916425260e+07,
+        1.740070551888e-03,
+        8.800931931576e-03,
+        1.670858218275e+06,
+        2.563592003888e+06,
+        3.778281339544e+03,
+        5.210887824931e+03,
+    ],
+];
+
 fn at(p: f64, t: f64) -> anyhow::Result<steam::SteamProperties> {
     steam::properties(
         Pressure::new::<pascal>(p),
@@ -834,6 +1049,62 @@ fn test_steam_saturation_brackets_the_liquid_and_vapour_regions() -> anyhow::Res
             (g_l - g_v).abs() < 1e-5 * latent,
             "{t} K: g' = {g_l}, g'' = {g_v}"
         );
+    }
+    Ok(())
+}
+
+#[test]
+fn test_steam_saturated_states_match_coolprop_if97() -> anyhow::Result<()> {
+    for row in SATURATED {
+        let t = row[0];
+        let sat = steam::saturated(ThermodynamicTemperature::new::<kelvin>(t))?;
+        let got = [
+            sat.pressure.get::<pascal>(),
+            sat.liquid.specific_volume.get::<cubic_meter_per_kilogram>(),
+            sat.vapour.specific_volume.get::<cubic_meter_per_kilogram>(),
+            sat.liquid.enthalpy.get::<joule_per_kilogram>(),
+            sat.vapour.enthalpy.get::<joule_per_kilogram>(),
+            sat.liquid.entropy.get::<joule_per_kilogram_kelvin>(),
+            sat.vapour.entropy.get::<joule_per_kilogram_kelvin>(),
+        ];
+        let names = ["p", "v'", "v''", "h'", "h''", "s'", "s''"];
+        for ((name, got), want) in names.iter().zip(got).zip(&row[1..]) {
+            let error = (got - want).abs() / want.abs().max(1e3);
+            anyhow::ensure!(error < 1e-9, "{name} at {t} K: {got} vs {want} ({error:e})");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::many_single_char_names,
+    reason = "thermodynamic symbols p, T, u, v, h, s, x"
+)]
+fn test_steam_region_3_states_from_u_and_v_match_coolprop_if97() -> anyhow::Result<()> {
+    for row in GOLDEN_REGION3 {
+        let (t, v, h, u, s) = (row[1], row[2], row[3], row[4], row[5]);
+        let state = steam::state_from_uv(
+            AvailableEnergy::new::<joule_per_kilogram>(u),
+            SpecificVolume::new::<cubic_meter_per_kilogram>(v),
+        )?;
+        anyhow::ensure!(
+            state.region == Region::NearCritical,
+            "{t} K, {v} m³/kg: {:?}",
+            state.region
+        );
+        let got = [
+            state.temperature.get::<kelvin>(),
+            state.enthalpy.get::<joule_per_kilogram>(),
+            state.entropy.get::<joule_per_kilogram_kelvin>(),
+        ];
+        for ((name, got), want) in ["T", "h", "s"].iter().zip(got).zip([t, h, s]) {
+            let error = (got / want - 1.0).abs();
+            anyhow::ensure!(
+                error < 1e-10,
+                "{name} at {t} K, {v} m³/kg: {got} vs {want} ({error:e})"
+            );
+        }
     }
     Ok(())
 }
