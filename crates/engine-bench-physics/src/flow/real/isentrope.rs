@@ -82,15 +82,28 @@ impl<F: RealFluid> Isentrope<'_, F> {
             // G falls from G* at the throat to 0 at stagnation.
             Branch::Subsonic => (p_star, self.stagnation.p),
             Branch::Supersonic => {
-                let mut lo = 0.5 * p_star;
-                while self.at(lo)?.g > g {
-                    if lo < MIN_PRESSURE_RATIO * self.stagnation.p {
-                        return Err(PhysicsError::InvalidState(
-                            "mass flux not reached on the supersonic branch",
-                        )
-                        .into());
+                // Halve the pressure until the flux falls below g. A fluid can
+                // have no states below some pressure (frozen vapour past its
+                // range): then close in on the last reachable one.
+                let (mut reached, mut lo) = (p_star, 0.5 * p_star);
+                loop {
+                    match self.at(lo) {
+                        Ok(point) if point.g <= g => break,
+                        Ok(_) => {
+                            if lo < MIN_PRESSURE_RATIO * self.stagnation.p {
+                                return Err(PhysicsError::InvalidState(
+                                    "mass flux not reached on the supersonic branch",
+                                )
+                                .into());
+                            }
+                            reached = lo;
+                            lo *= 0.5;
+                        }
+                        Err(_) if lo / reached < 1.0 - 1e-9 => lo = (lo * reached).sqrt(),
+                        Err(e) => {
+                            return Err(e).context("supersonic branch ends before the mass flux");
+                        }
                     }
-                    lo *= 0.5;
                 }
                 (lo, p_star)
             }
@@ -141,6 +154,67 @@ mod tests {
 
     fn fail(e: &anyhow::Error) -> TestCaseError {
         TestCaseError::fail(format!("{e:#}"))
+    }
+
+    /// A perfect gas with no states below `floor` Pa, as frozen vapour has
+    /// none past its range.
+    struct Floored<'a> {
+        gas: &'a crate::flow::PerfectGas,
+        floor: f64,
+    }
+
+    impl RealFluid for Floored<'_> {
+        fn state_ps(
+            &self,
+            p: crate::units::Pressure,
+            s: crate::units::SpecificHeatCapacity,
+        ) -> anyhow::Result<FlowState> {
+            anyhow::ensure!(
+                p.get::<crate::units::pressure::pascal>() >= self.floor,
+                "below the floor"
+            );
+            self.gas.state_ps(p, s)
+        }
+
+        fn state_prho(
+            &self,
+            p: crate::units::Pressure,
+            rho: crate::units::MassDensity,
+        ) -> anyhow::Result<FlowState> {
+            self.gas.state_prho(p, rho)
+        }
+    }
+
+    #[test]
+    fn test_supersonic_flux_is_found_above_unreachable_pressures() -> anyhow::Result<()> {
+        // Area ratio 2 for γ = 1.4 exits near 0.094 p0; the first trial ends
+        // of the bracket (0.26 p0, 0.13 p0, 0.066 p0) pass a floor at 0.08 p0.
+        let gas = air()?;
+        let floored = Floored {
+            gas: &gas,
+            floor: 0.08 * 5e5,
+        };
+        let stagnation = Stagnation::at_rest(&state(&gas, 5e5, 300.0)?);
+        let (free, limited) = (
+            Isentrope {
+                fluid: &gas,
+                stagnation,
+            },
+            Isentrope {
+                fluid: &floored,
+                stagnation,
+            },
+        );
+        let sonic = free.choked()?;
+        let want = free.with_flux(sonic.g / 2.0, &sonic, Branch::Supersonic)?;
+        let got = limited.with_flux(sonic.g / 2.0, &limited.choked()?, Branch::Supersonic)?;
+        anyhow::ensure!(
+            (got.state.p() / want.state.p() - 1.0).abs() < 1e-12,
+            "{} vs {}",
+            got.state.p(),
+            want.state.p()
+        );
+        Ok(())
     }
 
     #[test]
