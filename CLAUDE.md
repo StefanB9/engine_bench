@@ -11,7 +11,7 @@ engine_bench/                          (workspace root)
 ├── Cargo.toml                         [workspace] manifest — all dependency versions here
 ├── clippy.toml                        doc-valid-idents (proper names, units)
 ├── docs/plan/                         Approved plans
-├── tools/reference/                   Offline scripts: IF97 table transcription, CoolProp goldens
+├── tools/reference/                   Offline scripts: IF97 tables, PR constants, CoolProp goldens
 │
 └── crates/
     ├── engine-bench-physics/          (library — units, thermo, chemistry, numerics, solvers)
@@ -21,6 +21,7 @@ engine_bench/                          (workspace root)
     │   ├── proptest-regressions/      Saved proptest failure seeds (committed, re-run first)
     │   ├── tests/control_volume.rs    Integration: coupled volumes, conservation, blowdown
     │   ├── tests/flight.rs            Integration: ballistics, terminal velocity, stability, wind
+    │   ├── tests/peng_robinson.rs     Integration: PR compressibility vs CoolProp, measured accuracy
     │   ├── tests/steam.rs             Integration: IF97 vs CoolProp goldens, region consistency
     │   └── src/
     │       ├── lib.rs                 Module declarations
@@ -37,8 +38,9 @@ engine_bench/                          (workspace root)
     │       │                          dome), SteamVolume; coefficients/ generated from
     │       │                          CoolProp/IF97 (MIT)
     │       ├── units.rs               uom SI quantities for public APIs
-    │       ├── gas/                   Lumped volumes: ControlVolume, Environment, GasPort,
-    │       │                          orifice_transfer (conservative by construction)
+    │       ├── gas/                   Lumped volumes: ControlVolume<S, N, E = IdealGas>,
+    │       │                          Environment, GasPort, orifice_transfer (conservative)
+    │       │   └── eos/               EquationOfState: IdealGas, PengRobinson (mixtures, k_ij = 0)
     │       ├── numerics/
     │       │   ├── roots.rs           Brent, bracketed Newton
     │       │   └── ode/               OdeSystem, rk4_step, DormandPrince45 (dense output, events)
@@ -46,7 +48,7 @@ engine_bench/                          (workspace root)
     │           ├── gases.rs           Generated species constants (N2, O2, …, ALL)
     │           ├── nasa9.rs           TemperaturePowers + 9-coefficient polynomial kernels
     │           ├── species.rs         Species, Element; constant-cp extrapolation below range
-    │           ├── species_set.rs     SpeciesSet<N> (compile-time), Air3, Major7
+    │           ├── species_set.rs     SpeciesSet<N> (compile-time), Air3, Major7, ColdGas (≥ 60 K)
     │           └── mixture/           Mixture<S, N>: composition, properties, T from u / h
     │
     ├── engine-bench-core/             (library — engine models, Engine trait, Scene, recording)
