@@ -11,7 +11,7 @@ engine_bench/                          (workspace root)
 ├── Cargo.toml                         [workspace] manifest — all dependency versions here
 ├── clippy.toml                        doc-valid-idents (proper names, units)
 ├── docs/plan/                         Approved plans
-├── tools/reference/                   Offline scripts: IF97 tables, PR constants, CoolProp goldens
+├── tools/reference/                   Offline scripts: IF97 tables, reference EOS, CoolProp goldens
 │
 └── crates/
     ├── engine-bench-physics/          (library — units, thermo, chemistry, numerics, solvers)
@@ -22,6 +22,7 @@ engine_bench/                          (workspace root)
     │   ├── tests/control_volume.rs    Integration: coupled volumes, conservation, blowdown
     │   ├── tests/flight.rs            Integration: ballistics, terminal velocity, stability, wind
     │   ├── tests/peng_robinson.rs     Integration: PR compressibility vs CoolProp, measured accuracy
+    │   ├── tests/reference_fluids.rs  Integration: reference EOS vs CoolProp (single phase, saturation)
     │   ├── tests/steam.rs             Integration: IF97 vs CoolProp goldens, region consistency
     │   └── src/
     │       ├── lib.rs                 Module declarations
@@ -33,6 +34,9 @@ engine_bench/                          (workspace root)
     │       │   ├── shock.rs           Normal-shock relations
     │       │   ├── orifice.rs         Reservoir, Orifice: bidirectional, choked, C¹ near Δp = 0
     │       │   └── nozzle/            Nozzle operating point: every quasi-1D regime, thrust, Isp
+    │       ├── fluid/                 Reference Helmholtz EOS for N2, Ar, He, CO2 (CoolProp data,
+    │       │                          NASA reference state): properties(p, T), saturation(T),
+    │       │                          state_from_uv with the two-phase dome
     │       ├── steam/                 IAPWS-IF97 water/steam, all 5 regions: properties(p, T),
     │       │                          saturated(T), T(p, h), T(p, s), state_from_uv (two-phase
     │       │                          dome), SteamVolume; coefficients/ generated from
@@ -40,7 +44,8 @@ engine_bench/                          (workspace root)
     │       ├── units.rs               uom SI quantities for public APIs
     │       ├── gas/                   Lumped volumes: ControlVolume<S, N, E = IdealGas>,
     │       │                          Environment, GasPort, orifice_transfer (conservative)
-    │       │   └── eos/               EquationOfState: IdealGas, PengRobinson (mixtures, k_ij = 0)
+    │       │   └── eos/               EquationOfState: IdealGas, PengRobinson (mixtures, k_ij = 0),
+    │       │                          Reference (one pure fluid, two-phase)
     │       ├── numerics/
     │       │   ├── roots.rs           Brent, bracketed Newton
     │       │   └── ode/               OdeSystem, rk4_step, DormandPrince45 (dense output, events)
