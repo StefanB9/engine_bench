@@ -7,8 +7,9 @@ Parent plan: `0001-architecture-and-roadmap.md`, milestone M3 (catalogue engines
 | Topic | Decision |
 |---|---|
 | Steam/water | **Full IAPWS-IF97**, all five regions, with verification against the IF97 tables |
-| Cold, dense gas | **Peng–Robinson** real-gas EOS, used in volumes **and through nozzles and orifices** |
+| Cold, dense gas | **Reference multiparameter Helmholtz EOS** for the four pure propellants, **Peng–Robinson** for mixtures; both used in volumes **and through nozzles and orifices** (revised at the start of PR 4) |
 | Cold-gas propellants | **N₂, Ar, He, CO₂**. CO₂ is stored as liquid + vapour |
+| Below the NASA data range | **Extended on physical grounds**: the cold-gas set is valid down to 60 K through the constant-cp ideal-gas extrapolation (exact for monatomic He and Ar, ~0.1 % for N₂; CO₂ is bounded by its 216.6 K triple point) |
 | Water rocket | **2D flight with launch tube and parachute**, as a **3-DOF planar rigid body** (decided at the start of PR 1) |
 | Camera | **Scene sets its view**: an optional explicit view rectangle, still drawn from channels |
 | Real-gas shocks | **Full real-gas Rankine–Hugoniot** in the nozzle's shock regime |
@@ -37,11 +38,17 @@ Parent plan: `0001-architecture-and-roadmap.md`, milestone M3 (catalogue engines
 2. **`gas::eos`: equation-of-state trait.**
    - `ControlVolume<S, N, E: EquationOfState>`. `IdealGas` is today's behaviour, zero-cost;
      existing code keeps `IdealGas` as the default type parameter.
-   - `PengRobinson` with critical constants and acentric factors (N₂, O₂, Ar, He, CO₂, H₂O, H₂,
-     CO), van der Waals one-fluid mixing (k_ij = 0), and u, h, s departures added to the NASA
-     ideal-gas parts.
-   - Vapour–liquid equilibrium for pure species (equal fugacities), so a CO₂ volume can be
-     two-phase.
+   - `PengRobinson` for mixtures, with critical constants and acentric factors (N₂, O₂, Ar, He,
+     CO₂, H₂O, H₂, CO), van der Waals one-fluid mixing (k_ij = 0), and u, h, s departures added
+     to the NASA ideal-gas parts. Single-phase: a state inside the spinodal is reported as
+     invalid.
+   - **Revised at the start of PR 4.** Measured against CoolProp's reference equations, PR misses
+     Z by 2–4 % at 300 K and up to 10 % for N₂ and Ar at 150 K and 300 bar, so the pure
+     propellants get **reference multiparameter Helmholtz equations** instead: Span et al. (N₂),
+     Tegeler et al. (Ar), Ortiz-Vega et al. (He) and Span–Wagner (CO₂), coefficients from
+     CoolProp's fluid files (MIT). Vapour–liquid equilibrium (equal Gibbs energy on the
+     reference equation) makes a CO₂ volume two-phase; PR's own pure-species VLE is no longer
+     needed.
 3. **`flow::real`: real-fluid isentropic flow** for any `RealFluid` (IF97 water, PR mixtures).
    - Isentropic states from (p, s₀). The homogeneous equilibrium model (HEM) applies inside the
      two-phase dome.
@@ -124,10 +131,11 @@ per propellant at reset, without changing the API.
 
 - **IF97**: official verification values for every region and the saturation line. Round trips
   (p, T) ↔ (p, h) ↔ (p, s) ↔ (u, v). Continuity across region boundaries (proptest).
-- **Peng–Robinson**: N₂, Ar, He, CO₂ Z-factor, u, h and s against CoolProp reference values up
-  to 300 bar, with the expected PR accuracy stated per species (Z within about 2 % for N₂/Ar,
-  CO₂ saturation pressure within about 3 %). PR must reduce to ideal gas at low density
-  (proptest).
+- **Peng–Robinson**: the analytic critical compressibility Z_c = 0.3074; Z against CoolProp with
+  the measured PR accuracy stated per species; thermodynamic consistency (Maxwell relations,
+  c_v = ∂u/∂T) and the ideal-gas limit at low density (proptests).
+- **Reference equations**: the published check values of each equation, and CoolProp goldens
+  for p, u, h, s, c_p, w and saturation (CO₂) to ~1e-9.
 - **Real-fluid flow**: equals the perfect-gas orifice/nozzle in the ideal limit; choked flux
   matches the analytic perfect-gas value; real-gas shock jumps conserve mass, momentum and energy
   and reduce to the perfect-gas relations at low density; thrust stays continuous across regime
@@ -147,7 +155,10 @@ per propellant at reset, without changing the API.
    aerodynamics, Barrowman.
 2. `feature/m3-if97-basic`: IF97 regions 1, 2, 4, 5 + verification.
 3. `feature/m3-if97-region3`: region 3, (u, v) solver, two-phase water/steam volume.
-4. `feature/m3-peng-robinson`: EOS trait, `ControlVolume` generic over the EOS, PR, VLE, He.
+4. `feature/m3-peng-robinson`: EOS trait, `ControlVolume` generic over the EOS, PR for mixtures,
+   He, the cold-gas species set and its low-temperature range.
+4b. `feature/m3-reference-eos`: reference Helmholtz equations for N₂, Ar, He, CO₂; two-phase
+   pure-fluid volumes (CO₂).
 5. `feature/m3-real-flow`: real-fluid isentropic flow, orifice, nozzle, HEM.
 6. `feature/m3-cold-gas-thruster`: engine #2.
 7. `feature/m3-water-rocket`: engine #3.
