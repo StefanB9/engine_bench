@@ -64,6 +64,13 @@ impl<S: SpeciesSet<N>, const N: usize> Environment<S, N> {
     }
 }
 
+impl<S: SpeciesSet<N>, const N: usize> Environment<S, N> {
+    /// Composition of the surroundings.
+    pub(super) fn mixture(&self) -> &Mixture<S, N> {
+        &self.mixture
+    }
+}
+
 impl<S: SpeciesSet<N>, const N: usize> GasPort<S, N> for Environment<S, N> {
     fn reservoir(&self) -> Reservoir {
         self.reservoir

@@ -4,18 +4,20 @@
 //! [`IdealGas`] is the default and costs nothing extra; [`PengRobinson`] adds
 //! real-gas departures for dense mixtures.
 
+mod flow;
 pub mod peng_robinson;
 mod reference;
 
 use std::fmt::Debug;
 
 use anyhow::Context;
+pub use flow::EosFluid;
 pub use peng_robinson::PengRobinson;
 pub use reference::Reference;
 
 use crate::{
     PhysicsError,
-    flow::PerfectGas,
+    flow::{PerfectGas, real::FlowState},
     thermo::{Mixture, SpeciesSet},
 };
 
@@ -95,6 +97,18 @@ pub trait EquationOfState<S: SpeciesSet<N>, const N: usize>: Copy + Debug + Part
     /// Specific entropy, J/(kg·K), of `state`.
     fn entropy(&self, mixture: &Mixture<S, N>, state: &FluidState) -> f64;
 
+    /// Equilibrium flow state at `p` Pa and specific entropy `s` J/(kg·K),
+    /// for isentropic expansion.
+    fn flow_state_ps(&self, mixture: &Mixture<S, N>, p: f64, s: f64) -> anyhow::Result<FlowState>;
+
+    /// Single-phase flow state at `p` Pa and density `rho` kg/m³, for shocks.
+    fn flow_state_prho(
+        &self,
+        mixture: &Mixture<S, N>,
+        p: f64,
+        rho: f64,
+    ) -> anyhow::Result<FlowState>;
+
     /// Saturated liquid and vapour at `t` K, the liquid filling
     /// `liquid_fraction` of the volume. Only equations with a two-phase
     /// region have one.
@@ -134,6 +148,58 @@ impl<S: SpeciesSet<N>, const N: usize> EquationOfState<S, N> for IdealGas {
     fn entropy(&self, mixture: &Mixture<S, N>, state: &FluidState) -> f64 {
         mixture.entropy_si(state.t, state.p)
     }
+
+    fn flow_state_ps(&self, mixture: &Mixture<S, N>, p: f64, s: f64) -> anyhow::Result<FlowState> {
+        check_pt(p, 1.0).context("isentropic ideal-gas state")?;
+        // Newton on ln T: ∂s/∂ln T = c_p at constant pressure.
+        let mut t = 300.0;
+        for _ in 0..MAX_ITERATIONS {
+            let (_, cp) = mixture.enthalpy_and_cp_si(t);
+            let step = (mixture.entropy_si(t, p) - s) / cp;
+            t *= (-step.clamp(-1.0, 1.0)).exp();
+            if step.abs() < 1e-14 {
+                return Ok(ideal_flow(mixture, p, t));
+            }
+        }
+        Err(PhysicsError::NoConvergence {
+            iterations: MAX_ITERATIONS,
+            residual: f64::NAN,
+        })
+        .with_context(|| format!("ideal gas at {p} Pa, s = {s} J/(kg K)"))
+    }
+
+    fn flow_state_prho(
+        &self,
+        mixture: &Mixture<S, N>,
+        p: f64,
+        rho: f64,
+    ) -> anyhow::Result<FlowState> {
+        check_pt(p, rho).context("ideal-gas state at (p, ρ)")?;
+        Ok(ideal_flow(
+            mixture,
+            p,
+            p / (rho * mixture.gas_constant_si()),
+        ))
+    }
+}
+
+/// Newton iterations allowed in the flow-state solves.
+const MAX_ITERATIONS: u32 = 60;
+
+/// Flow state of the ideal gas at `p` Pa and `t` K: w² = `γRT` with γ at T.
+#[expect(
+    clippy::many_single_char_names,
+    reason = "the thermodynamic symbols p, T, h, s, w"
+)]
+fn ideal_flow<S: SpeciesSet<N>, const N: usize>(
+    mixture: &Mixture<S, N>,
+    p: f64,
+    t: f64,
+) -> FlowState {
+    let r = mixture.gas_constant_si();
+    let (h, cp) = mixture.enthalpy_and_cp_si(t);
+    let w = (cp / (cp - r) * r * t).sqrt();
+    FlowState::from_si(p, t, p / (r * t), h, mixture.entropy_si(t, p), w, f64::NAN)
 }
 
 /// Ideal gas at `t` K and `v` m³/kg.

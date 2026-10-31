@@ -14,10 +14,12 @@ use anyhow::Context;
 pub use critical::{Critical, critical_constants};
 use kernel::Parameters;
 
-use super::{EquationOfState, FluidState, check_pt};
+use super::{EquationOfState, FluidState, IdealGas, check_pt};
 use crate::{
     PhysicsError,
+    flow::real::FlowState,
     thermo::{MOLAR_GAS_CONSTANT, Mixture, SpeciesSet},
+    units::thermodynamic_temperature::kelvin,
 };
 
 /// Peng–Robinson (1976) with van der Waals one-fluid mixing (`k_ij` = 0) for
@@ -96,6 +98,22 @@ impl<S: SpeciesSet<N>, const N: usize> PengRobinson<S, N> {
     }
 }
 
+/// Newton iterations allowed in the flow-state solves.
+const MAX_ITERATIONS: u32 = 60;
+
+impl<S: SpeciesSet<N>, const N: usize> PengRobinson<S, N> {
+    /// Flow state at `t` K and molar volume `vm`: w² = −v²·(cp/cv)·(∂p/∂v) at
+    /// constant T.
+    fn flow_at(&self, mixture: &Mixture<S, N>, x: &[f64; N], t: f64, vm: f64) -> FlowState {
+        let state = self.state_at(mixture, x, t, vm);
+        let s = self.entropy(mixture, &state);
+        let dp_dv = self.parameters.evaluate(x, t, vm).dp_dv;
+        let molar_mass = MOLAR_GAS_CONSTANT / mixture.gas_constant_si();
+        let w = (-vm * vm * state.cp / state.cv * dp_dv / molar_mass).sqrt();
+        FlowState::from_si(state.p, t, 1.0 / state.v, state.h, s, w, f64::NAN)
+    }
+}
+
 impl<S: SpeciesSet<N>, const N: usize> EquationOfState<S, N> for PengRobinson<S, N> {
     fn state_pt(&self, mixture: &Mixture<S, N>, p: f64, t: f64) -> anyhow::Result<FluidState> {
         check_pt(p, t).context("Peng-Robinson state")?;
@@ -140,6 +158,62 @@ impl<S: SpeciesSet<N>, const N: usize> EquationOfState<S, N> for PengRobinson<S,
             t = next;
         }
         FluidState::INVALID
+    }
+
+    fn flow_state_ps(&self, mixture: &Mixture<S, N>, p: f64, s: f64) -> anyhow::Result<FlowState> {
+        check_pt(p, 1.0).context("isentropic Peng-Robinson state")?;
+        let x = mixture.mole_fractions();
+        // Newton on T at constant p from the ideal-gas answer: ∂s/∂T = c_p/T.
+        let mut t = IdealGas
+            .flow_state_ps(mixture, p, s)?
+            .temperature
+            .get::<kelvin>();
+        for _ in 0..MAX_ITERATIONS {
+            let vm = self.parameters.molar_volume(&x, t, p);
+            let state = self.state_at(mixture, &x, t, vm);
+            let step = (self.entropy(mixture, &state) - s) * t / state.cp;
+            let next = (t - step).max(0.5 * t);
+            if (next - t).abs() <= 1e-12 * t {
+                let vm = self.parameters.molar_volume(&x, next, p);
+                return Ok(self.flow_at(mixture, &x, next, vm));
+            }
+            t = next;
+        }
+        Err(PhysicsError::NoConvergence {
+            iterations: MAX_ITERATIONS,
+            residual: f64::NAN,
+        })
+        .with_context(|| format!("Peng-Robinson at {p} Pa, s = {s} J/(kg K)"))
+    }
+
+    fn flow_state_prho(
+        &self,
+        mixture: &Mixture<S, N>,
+        p: f64,
+        rho: f64,
+    ) -> anyhow::Result<FlowState> {
+        check_pt(p, rho).context("Peng-Robinson state at (p, ρ)")?;
+        let x = mixture.mole_fractions();
+        let vm = MOLAR_GAS_CONSTANT / (mixture.gas_constant_si() * rho);
+        // Newton on T at constant v: ∂p/∂T > 0.
+        let mut t = p * vm / MOLAR_GAS_CONSTANT;
+        for _ in 0..MAX_ITERATIONS {
+            let m = self.parameters.evaluate(&x, t, vm);
+            let next = (t - (m.p - p) / m.dp_dt).max(0.5 * t);
+            if (next - t).abs() <= 1e-12 * t {
+                if self.parameters.evaluate(&x, next, vm).dp_dv >= 0.0 {
+                    return Err(PhysicsError::InvalidState("state inside the spinodal"))
+                        .with_context(|| format!("Peng-Robinson at {p} Pa, {rho} kg/m³"));
+                }
+                return Ok(self.flow_at(mixture, &x, next, vm));
+            }
+            t = next;
+        }
+        Err(PhysicsError::NoConvergence {
+            iterations: MAX_ITERATIONS,
+            residual: f64::NAN,
+        })
+        .with_context(|| format!("Peng-Robinson at {p} Pa, {rho} kg/m³"))
     }
 
     fn entropy(&self, mixture: &Mixture<S, N>, state: &FluidState) -> f64 {

@@ -232,6 +232,16 @@ impl<S: SpeciesSet<N>, const N: usize, E: EquationOfState<S, N>> ControlVolume<S
         Volume::new::<cubic_meter>(self.volume)
     }
 
+    /// The equation of state's view of the contents.
+    pub(super) fn fluid_state(&self) -> &FluidState {
+        &self.state
+    }
+
+    /// The equation of state.
+    pub(super) fn eos(&self) -> &E {
+        &self.eos
+    }
+
     /// Vapour mass fraction inside the two-phase dome, `None` for one phase.
     pub fn vapour_quality(&self) -> Option<f64> {
         (!self.state.quality.is_nan()).then_some(self.state.quality)

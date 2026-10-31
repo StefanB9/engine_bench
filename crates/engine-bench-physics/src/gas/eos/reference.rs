@@ -8,8 +8,13 @@ use anyhow::Context;
 use super::{EquationOfState, FluidState};
 use crate::{
     PhysicsError,
+    flow::real::{FlowState, RealFluid},
     fluid::{Molar, Phase, PureFluid, RawState, density_si, molar, saturation_si, state_uv_si},
     thermo::{Mixture, SpeciesSet},
+    units::{
+        MassDensity, Pressure, SpecificHeatCapacity, mass_density::kilogram_per_cubic_meter,
+        pressure::pascal, specific_heat_capacity::joule_per_kilogram_kelvin,
+    },
 };
 
 /// The reference equation of `fluid`, for volumes of the species set `S`
@@ -51,6 +56,17 @@ impl<S: SpeciesSet<N>, const N: usize> Reference<S, N> {
             index,
             set: PhantomData,
         })
+    }
+
+    /// Fails unless `mixture` is this fluid alone.
+    fn require_pure(&self, mixture: &Mixture<S, N>) -> anyhow::Result<()> {
+        if self.is_pure(mixture) {
+            return Ok(());
+        }
+        Err(PhysicsError::InvalidComposition(
+            "a reference equation needs a pure fluid",
+        ))
+        .with_context(|| format!("{:?}", self.fluid))
     }
 
     /// Whether `mixture` is this fluid alone (to round-off).
@@ -149,6 +165,27 @@ impl<S: SpeciesSet<N>, const N: usize> EquationOfState<S, N> for Reference<S, N>
         });
         state_uv_si(fluid, u * m, 1.0 / (v * m), hint.as_ref())
             .map_or(FluidState::INVALID, |state| self.per_mass(&state))
+    }
+
+    fn flow_state_ps(&self, mixture: &Mixture<S, N>, p: f64, s: f64) -> anyhow::Result<FlowState> {
+        self.require_pure(mixture)?;
+        self.fluid.state_ps(
+            Pressure::new::<pascal>(p),
+            SpecificHeatCapacity::new::<joule_per_kilogram_kelvin>(s),
+        )
+    }
+
+    fn flow_state_prho(
+        &self,
+        mixture: &Mixture<S, N>,
+        p: f64,
+        rho: f64,
+    ) -> anyhow::Result<FlowState> {
+        self.require_pure(mixture)?;
+        self.fluid.state_prho(
+            Pressure::new::<pascal>(p),
+            MassDensity::new::<kilogram_per_cubic_meter>(rho),
+        )
     }
 
     fn entropy(&self, mixture: &Mixture<S, N>, state: &FluidState) -> f64 {

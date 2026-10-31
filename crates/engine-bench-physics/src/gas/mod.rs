@@ -8,6 +8,8 @@
 mod control_volume;
 pub mod eos;
 mod port;
+mod real_port;
 
 pub use control_volume::{ControlVolume, NEGATIVE_MASS_TOLERANCE};
 pub use port::{Environment, GasPort, Transfer, orifice_transfer};
+pub use real_port::{RealPort, real_orifice_transfer};
