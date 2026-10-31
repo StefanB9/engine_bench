@@ -89,6 +89,8 @@ engine_bench/                          (workspace root)
 3. Only finalize and save the plan after the user has reviewed and approved the approach.
 4. Save the final plan to `docs/plan/` before implementation begins.
 
+**Recommend the more realistic option.** When a question offers physics or modelling choices of different fidelity, the recommended option is the more physically realistic one, even if it is slower or more work. Real-time performance is not a reason to recommend less: fidelity is cut afterwards, measured, only where real-time actually fails.
+
 Do not silently make architectural decisions. If the implementation plan document conflicts with the current codebase state (e.g., outdated dependency versions, changed APIs), flag the discrepancy and ask how to proceed.
 
 ## Quick Reference
