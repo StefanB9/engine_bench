@@ -28,12 +28,16 @@ missing_panics_doc = "allow"
 anyhow = { version = "1.0.104", default-features = false, features = ["std"] }
 tracing = { version = "0.1.44", default-features = false, features = ["attributes", "std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt", "std"] }
+triple_buffer = { version = "9.0.0", default-features = false }
 thiserror = { version = "2.0.21", default-features = false }
 clap = { version = "4.6.7", default-features = false, features = ["derive", "error-context", "help", "std", "usage"] }
+eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "wayland", "wgpu", "x11"] }
+egui_plot = { version = "0.38.0", default-features = false }
 polars = { version = "0.55.2", default-features = false, features = ["csv", "parquet"] }
 uom = { version = "0.38.0", default-features = false, features = ["f64", "si", "std"] }
 
 # dev-only
+egui_kittest = { version = "0.37.0", default-features = false }
 approx = { version = "0.5.1", default-features = false }
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 proptest = { version = "1.12.0", default-features = false, features = ["std"] }

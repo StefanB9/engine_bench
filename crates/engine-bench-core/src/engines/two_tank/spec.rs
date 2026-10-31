@@ -102,7 +102,7 @@ pub(crate) const CHANNELS: [ChannelSpec; channel::COUNT] = [
     observable("t_b", "Temperature B", QuantityKind::Temperature),
     observable("m_a", "Mass A", QuantityKind::Mass),
     observable("m_b", "Mass B", QuantityKind::Mass),
-    observable("mdot", "Mass flow A → B", QuantityKind::MassFlow),
+    observable("mdot", "Mass flow A to B", QuantityKind::MassFlow),
     scene_state("v_a", "Volume A", QuantityKind::Volume),
     scene_state("v_b", "Volume B", QuantityKind::Volume),
     scene_state("valve", "Valve opening", QuantityKind::Ratio),

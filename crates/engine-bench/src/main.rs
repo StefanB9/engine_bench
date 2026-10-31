@@ -3,6 +3,7 @@
 
 mod cli;
 mod commands;
+mod gui;
 mod logging;
 mod recording_io;
 mod units;
@@ -34,9 +35,6 @@ fn run(cli: Cli) -> anyhow::Result<()> {
     );
     match cli.command {
         Some(command) => commands::execute(command, &mut std::io::stdout().lock()),
-        None => anyhow::bail!(
-            "the GUI is not built yet (it arrives with the next M2 step); run a subcommand, see \
-             --help"
-        ),
+        None => gui::run(),
     }
 }
