@@ -7,7 +7,7 @@ use engine_bench_physics::units::Time;
 
 use crate::{
     CoreError,
-    engines::{TwoTankDemo, two_tank},
+    engines::{ColdGasThruster, TwoTankDemo, cold_gas, two_tank},
     scene::Scene,
     spec::{ChannelSpec, ControlId, ControlSpec, StepContext},
 };
@@ -61,16 +61,19 @@ pub enum EngineId {
     /// Two tanks and a valve; exercises the runtime before the catalogue
     /// engines exist.
     TwoTankDemo,
+    /// Catalogue engine 2: a regulated cold-gas thruster.
+    ColdGasThruster,
 }
 
 impl EngineId {
     /// Every engine, in menu order.
-    pub const ALL: [Self; 1] = [Self::TwoTankDemo];
+    pub const ALL: [Self; 2] = [Self::TwoTankDemo, Self::ColdGasThruster];
 
     /// Stable command-line and recording key, e.g. `two-tank-demo`.
     pub fn key(self) -> &'static str {
         match self {
             Self::TwoTankDemo => "two-tank-demo",
+            Self::ColdGasThruster => "cold-gas-thruster",
         }
     }
 
@@ -83,6 +86,7 @@ impl EngineId {
     pub fn descriptor(self) -> &'static EngineDescriptor {
         match self {
             Self::TwoTankDemo => TwoTankDemo::descriptor_static(),
+            Self::ColdGasThruster => ColdGasThruster::descriptor_static(),
         }
     }
 
@@ -91,6 +95,7 @@ impl EngineId {
     pub fn controls(self) -> &'static [ControlSpec] {
         match self {
             Self::TwoTankDemo => &two_tank::CONTROLS,
+            Self::ColdGasThruster => &cold_gas::CONTROLS,
         }
     }
 
@@ -98,6 +103,7 @@ impl EngineId {
     pub fn channels(self) -> &'static [ChannelSpec] {
         match self {
             Self::TwoTankDemo => &two_tank::CHANNELS,
+            Self::ColdGasThruster => &cold_gas::CHANNELS,
         }
     }
 
@@ -114,6 +120,7 @@ impl EngineId {
         }
         match self {
             Self::TwoTankDemo => two_tank::draw(sample, scene),
+            Self::ColdGasThruster => cold_gas::draw(sample, scene),
         }
     }
 }
@@ -122,14 +129,17 @@ impl EngineId {
 #[derive(Debug, Clone)]
 pub enum AnyEngine {
     /// See [`EngineId::TwoTankDemo`].
-    TwoTankDemo(TwoTankDemo),
+    TwoTankDemo(Box<TwoTankDemo>),
+    /// See [`EngineId::ColdGasThruster`].
+    ColdGasThruster(Box<ColdGasThruster>),
 }
 
 impl AnyEngine {
     /// A new instance of engine `id` with default controls.
     pub fn new(id: EngineId) -> anyhow::Result<Self> {
         Ok(match id {
-            EngineId::TwoTankDemo => Self::TwoTankDemo(TwoTankDemo::new()?),
+            EngineId::TwoTankDemo => Self::TwoTankDemo(Box::new(TwoTankDemo::new()?)),
+            EngineId::ColdGasThruster => Self::ColdGasThruster(Box::new(ColdGasThruster::new()?)),
         })
     }
 }
@@ -138,6 +148,7 @@ macro_rules! dispatch {
     ($self:ident, $engine:ident => $body:expr) => {
         match $self {
             AnyEngine::TwoTankDemo($engine) => $body,
+            AnyEngine::ColdGasThruster($engine) => $body,
         }
     };
 }
