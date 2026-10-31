@@ -56,7 +56,7 @@ impl Reservoir {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Orifice {
     /// Cd·A in m².
-    effective_area: f64,
+    pub(crate) effective_area: f64,
 }
 
 impl Orifice {

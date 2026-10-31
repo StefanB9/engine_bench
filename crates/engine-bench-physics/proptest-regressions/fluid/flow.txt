@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc e79f46d14a13b805cf50b92d7d9b8c735eb4806eb90c5b00c15287663d12ac3b # shrinks to fluid = Nitrogen, tr = 0.0, log_p = 4.0
+cc 237e08dd159461bd8862f07f4cecc1996acbaab448bde113d9656bd3e05464a6 # shrinks to fluid = Nitrogen, tr = 0.0, log_p = 5.830679949920653
+cc d583e37721fd3a3a83001934130011baeb91c7f5fdd34c65553b27d6237df7eb # shrinks to fluid = Nitrogen, tr = 0.1554400223314961, log_p = 6.816764284779293

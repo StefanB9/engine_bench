@@ -53,10 +53,18 @@ pub(crate) fn density_si(fluid: &Fluid, p: f64, t: f64) -> anyhow::Result<f64> {
     let f = |rho: f64| molar(fluid, rho, t).p - p;
     let (lo, hi, start) = if t < dome_top(fluid) {
         let (p_sat, rho_l, rho_v) = saturation_si(fluid, t)?;
+        // On the saturation line itself (to round-off) the bracket would have
+        // no sign change: the saturated phase is the answer.
         if p >= p_sat {
+            if f(rho_l) >= 0.0 {
+                return Ok(rho_l);
+            }
             let hi = grow_up(&f, rho_l, max_density(fluid))?;
             (rho_l, hi, rho_l)
         } else {
+            if f(rho_v) <= 0.0 {
+                return Ok(rho_v);
+            }
             (rho_v * 1e-12, rho_v, ideal.min(rho_v))
         }
     } else {
@@ -250,27 +258,45 @@ fn mixture(fluid: &Fluid, t: f64, rho: f64) -> anyhow::Result<RawState> {
     })
 }
 
+/// Temperature, K, of the dome's edge at density `rho` mol/m³: where the
+/// saturated liquid or vapour has that density (the dome's top between them).
+/// `None` if no saturated state is that dense or that dilute.
+pub(crate) fn dome_edge(fluid: &Fluid, rho: f64) -> anyhow::Result<Option<f64>> {
+    let data = fluid.data;
+    let top = dome_top(fluid);
+    let (_, top_l, top_v) = saturation_si(fluid, top)?;
+    if rho > top_v && rho < top_l {
+        return Ok(Some(top));
+    }
+    if rho >= top_l {
+        let (_, triple_l, _) = saturation_si(fluid, data.t_triple)?;
+        if rho > triple_l {
+            return Ok(None);
+        }
+        return Ok(Some(solve(
+            |t| Ok(saturation_si(fluid, t)?.1 - rho),
+            data.t_triple,
+            top,
+        )?));
+    }
+    let (_, _, triple_v) = saturation_si(fluid, data.t_triple)?;
+    if rho < triple_v {
+        return Ok(None);
+    }
+    Ok(Some(solve(
+        |t| Ok(saturation_si(fluid, t)?.2 - rho),
+        data.t_triple,
+        top,
+    )?))
+}
+
 /// The two-phase state with energy `u` at density `rho`, if (u, ρ) lies in the
 /// dome. At fixed ρ the mixture energy rises with T up to the dome's edge, so
 /// the state is two-phase exactly when u is below the edge's energy.
 fn inside_dome(fluid: &Fluid, u: f64, rho: f64) -> anyhow::Result<Dome> {
     let data = fluid.data;
-    let top = dome_top(fluid);
-    let (_, top_l, top_v) = saturation_si(fluid, top)?;
-    let t_edge = if rho > top_v && rho < top_l {
-        top
-    } else if rho >= top_l {
-        let (_, triple_l, _) = saturation_si(fluid, data.t_triple)?;
-        if rho > triple_l {
-            return Ok(Dome::Outside(None));
-        }
-        solve(|t| Ok(saturation_si(fluid, t)?.1 - rho), data.t_triple, top)?
-    } else {
-        let (_, _, triple_v) = saturation_si(fluid, data.t_triple)?;
-        if rho < triple_v {
-            return Ok(Dome::Outside(None));
-        }
-        solve(|t| Ok(saturation_si(fluid, t)?.2 - rho), data.t_triple, top)?
+    let Some(t_edge) = dome_edge(fluid, rho)? else {
+        return Ok(Dome::Outside(None));
     };
     if u >= mixture(fluid, t_edge, rho)?.bulk.u {
         return Ok(Dome::Outside(Some(t_edge)));

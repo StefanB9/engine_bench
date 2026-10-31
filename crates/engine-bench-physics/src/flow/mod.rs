@@ -6,9 +6,10 @@
 //! equilibrium chemistry (M5).
 
 pub mod isentropic;
-mod nozzle;
-mod orifice;
+pub(crate) mod nozzle;
+pub(crate) mod orifice;
 mod perfect_gas;
+pub mod real;
 pub mod shock;
 
 pub use nozzle::{Nozzle, NozzleOperatingPoint, NozzleRegime};
