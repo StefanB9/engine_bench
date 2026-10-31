@@ -154,7 +154,9 @@ mod tests {
             // Ideal gas.
             prop_assert!((p / (rho * R_AIR * t) - 1.0).abs() < 1e-12);
             // Hydrostatic balance dp/dh = −ρ·g.
-            let dh = 1.0;
+            // Short stencil: a wide one straddling the tropopause kink (where dp/dh is
+            // continuous but its slope jumps) carries an O(dh) error.
+            let dh = 0.05;
             let dp = state(altitude + dh).pressure.get::<pascal>()
                 - state(altitude - dh).pressure.get::<pascal>();
             let gradient = dp / (2.0 * dh);
