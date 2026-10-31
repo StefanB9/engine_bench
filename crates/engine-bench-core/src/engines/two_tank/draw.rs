@@ -85,7 +85,7 @@ pub(crate) fn draw(sample: &[f64], scene: &mut Scene) -> anyhow::Result<()> {
         (left - 0.5 * side_a, side_a, p_a, t_a, "A"),
         (right + 0.5 * side_b, side_b, p_b, t_b, "B"),
     ] {
-        scene.label(Point::new(center, 0.5 * top), Label::Text(name));
+        scene.label(Point::new(center, -0.06), Label::Text(name));
         let pressure = Label::Value {
             value: p,
             quantity: QuantityKind::Pressure,
@@ -230,6 +230,29 @@ mod tests {
             })
             .collect();
         anyhow::ensure!(pressures == [6e5, 2e5], "{pressures:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_draw_names_tanks_below_them() -> anyhow::Result<()> {
+        // Inside the tanks, light text on a light gas fill is illegible.
+        let mut scene = Scene::new();
+        draw(&demo_sample(0.01), &mut scene)?;
+        let names: Vec<f64> = scene
+            .shapes()
+            .iter()
+            .filter_map(|shape| match shape {
+                Shape::Label {
+                    at,
+                    label: Label::Text("A" | "B"),
+                } => Some(at.y),
+                _ => None,
+            })
+            .collect();
+        anyhow::ensure!(
+            names.len() == 2 && names.iter().all(|y| *y < 0.0),
+            "{names:?}"
+        );
         Ok(())
     }
 
