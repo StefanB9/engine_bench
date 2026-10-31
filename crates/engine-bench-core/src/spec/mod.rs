@@ -7,6 +7,9 @@ mod quantity;
 mod step;
 
 pub use channel::{ChannelRole, ChannelSpec, find_channel};
-pub use control::{ControlId, ControlKind, ControlSpec, find_control};
+pub use control::{
+    ChoiceOption, ControlId, ControlKind, ControlSpec, choice_index, find_choice_option,
+    find_control,
+};
 pub use quantity::QuantityKind;
 pub use step::{Accuracy, StepContext};

@@ -42,6 +42,22 @@ pub enum ControlKind {
     },
     /// A one-shot action such as reset; any value fires it.
     Trigger,
+    /// One of a fixed list of options; the value is its index (0.0, 1.0, …).
+    Choice {
+        /// The options, in index order.
+        options: &'static [ChoiceOption],
+        /// Index at start and after reset.
+        default: usize,
+    },
+}
+
+/// One option of a [`ControlKind::Choice`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChoiceOption {
+    /// Command-line key, e.g. `n2` in `--set propellant=n2`.
+    pub key: &'static str,
+    /// Human-readable label.
+    pub label: &'static str,
 }
 
 /// A control: stable key for the command line, label for the UI, and its kind.
@@ -62,22 +78,30 @@ impl ControlSpec {
             ControlKind::Continuous { default, .. } => default,
             ControlKind::Toggle { default } => f64::from(u8::from(default)),
             ControlKind::Trigger => 0.0,
+            ControlKind::Choice { default, .. } => index_value(default),
         }
     }
 
     /// Accepts `value` if it is valid for this control: inside the range for
-    /// continuous controls, exactly 0 or 1 for toggles, any finite value for
-    /// triggers.
+    /// continuous controls, exactly 0 or 1 for toggles, an option's index for
+    /// choices, any finite value for triggers.
     pub fn validate(&self, value: f64) -> anyhow::Result<f64> {
         let (min, max) = match self.kind {
             ControlKind::Continuous { min, max, .. } => (min, max),
             ControlKind::Toggle { .. } => (0.0, 1.0),
             ControlKind::Trigger => (f64::MIN, f64::MAX),
+            ControlKind::Choice { options, .. } => {
+                (0.0, index_value(options.len().saturating_sub(1)))
+            }
         };
-        let toggle_ok = !matches!(self.kind, ControlKind::Toggle { .. })
-            || value.to_bits() == 0.0f64.to_bits()
-            || value.to_bits() == 1.0f64.to_bits();
-        if (min..=max).contains(&value) && toggle_ok {
+        let discrete_ok = match self.kind {
+            ControlKind::Toggle { .. } => {
+                value.to_bits() == 0.0f64.to_bits() || value.to_bits() == 1.0f64.to_bits()
+            }
+            ControlKind::Choice { options, .. } => choice_index(value, options.len()).is_some(),
+            ControlKind::Continuous { .. } | ControlKind::Trigger => true,
+        };
+        if (min..=max).contains(&value) && discrete_ok {
             Ok(value)
         } else {
             Err(CoreError::ControlOutOfRange {
@@ -89,6 +113,24 @@ impl ControlSpec {
             .context(self.label)
         }
     }
+}
+
+/// The option index a validated choice `value` holds, among `len` options.
+pub fn choice_index(value: f64, len: usize) -> Option<usize> {
+    (0..len).find(|&i| index_value(i).to_bits() == value.to_bits())
+}
+
+/// The option whose key or label is `text` (ignoring case), if any.
+pub fn find_choice_option(options: &[ChoiceOption], text: &str) -> Option<usize> {
+    options
+        .iter()
+        .position(|o| o.key.eq_ignore_ascii_case(text) || o.label.eq_ignore_ascii_case(text))
+}
+
+/// An option index as a control value.
+fn index_value(index: usize) -> f64 {
+    // Option lists are short: the index is exact in f64.
+    f64::from(u32::try_from(index).unwrap_or(u32::MAX))
 }
 
 /// The control with command-line `key`, if any.
@@ -186,6 +228,63 @@ mod tests {
             trigger.validate(f64::INFINITY).is_err(),
             "trigger accepted inf"
         );
+        Ok(())
+    }
+
+    const GASES: [ChoiceOption; 3] = [
+        ChoiceOption {
+            key: "n2",
+            label: "Nitrogen",
+        },
+        ChoiceOption {
+            key: "ar",
+            label: "Argon",
+        },
+        ChoiceOption {
+            key: "he",
+            label: "Helium",
+        },
+    ];
+
+    const PROPELLANT: ControlSpec = ControlSpec {
+        key: "propellant",
+        label: "Propellant",
+        kind: ControlKind::Choice {
+            options: &GASES,
+            default: 1,
+        },
+    };
+
+    #[test]
+    fn test_control_spec_choice_defaults_to_its_option_index() -> anyhow::Result<()> {
+        anyhow::ensure!(same(PROPELLANT.default_value(), 1.0), "default");
+        Ok(())
+    }
+
+    #[test]
+    fn test_control_spec_validates_choice_indices() -> anyhow::Result<()> {
+        for good in [0.0, 1.0, 2.0] {
+            anyhow::ensure!(same(PROPELLANT.validate(good)?, good), "{good}");
+        }
+        for bad in [-1.0, 0.5, 3.0, f64::NAN] {
+            anyhow::ensure!(PROPELLANT.validate(bad).is_err(), "accepted {bad}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_choice_index_reads_a_validated_value() -> anyhow::Result<()> {
+        anyhow::ensure!(choice_index(2.0, GASES.len()) == Some(2), "2");
+        anyhow::ensure!(choice_index(3.0, GASES.len()).is_none(), "3");
+        anyhow::ensure!(choice_index(1.5, GASES.len()).is_none(), "1.5");
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_choice_option_by_key_or_label() -> anyhow::Result<()> {
+        anyhow::ensure!(find_choice_option(&GASES, "he") == Some(2), "key");
+        anyhow::ensure!(find_choice_option(&GASES, "ARGON") == Some(1), "label");
+        anyhow::ensure!(find_choice_option(&GASES, "xenon").is_none(), "unknown");
         Ok(())
     }
 
