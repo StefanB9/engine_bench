@@ -11,10 +11,11 @@ use crate::{
     flow::Reservoir,
     thermo::{Mixture, SpeciesSet},
     units::{
-        AvailableEnergy, Energy, Mass, Pressure, SpecificHeatCapacity, ThermodynamicTemperature,
-        Volume, available_energy::joule_per_kilogram, energy::joule, mass::kilogram,
-        pressure::pascal, specific_heat_capacity::joule_per_kilogram_kelvin,
-        thermodynamic_temperature::kelvin, volume::cubic_meter,
+        AvailableEnergy, Energy, Mass, Pressure, Ratio, SpecificHeatCapacity,
+        ThermodynamicTemperature, Volume, available_energy::joule_per_kilogram, energy::joule,
+        mass::kilogram, pressure::pascal, ratio::ratio,
+        specific_heat_capacity::joule_per_kilogram_kelvin, thermodynamic_temperature::kelvin,
+        volume::cubic_meter,
     },
 };
 
@@ -79,6 +80,46 @@ impl<S: SpeciesSet<N>, const N: usize, E: EquationOfState<S, N>> ControlVolume<S
         let state = eos
             .state_pt(&mixture, pressure, temperature)
             .context("control volume")?;
+        let mass = volume / state.v;
+        let mut cv = Self {
+            masses: mixture.mass_fractions().map(|y| y * mass),
+            internal_energy: mass * state.u,
+            volume,
+            eos,
+            mixture,
+            mass,
+            state,
+            solved: true,
+        };
+        cv.refresh();
+        Ok(cv)
+    }
+
+    /// Liquid and vapour in equilibrium at temperature `t`, the liquid filling
+    /// `liquid_fraction` of `volume`. Needs an equation of state with a
+    /// two-phase region, such as [`Reference`](super::eos::Reference).
+    pub fn with_saturated(
+        eos: E,
+        mixture: Mixture<S, N>,
+        t: ThermodynamicTemperature,
+        liquid_fraction: Ratio,
+        volume: Volume,
+    ) -> anyhow::Result<Self> {
+        let volume = volume.get::<cubic_meter>();
+        if !(volume > 0.0 && volume.is_finite()) {
+            return Err(PhysicsError::InvalidGeometry("volume must be positive"))
+                .with_context(|| format!("V = {volume} m³"));
+        }
+        let alpha = liquid_fraction.get::<ratio>();
+        if !(0.0..=1.0).contains(&alpha) {
+            return Err(PhysicsError::InvalidState(
+                "liquid fraction must be within 0..1",
+            ))
+            .with_context(|| format!("liquid fraction {alpha}"));
+        }
+        let state = eos
+            .state_saturated(&mixture, t.get::<kelvin>(), alpha)
+            .context("saturated control volume")?;
         let mass = volume / state.v;
         let mut cv = Self {
             masses: mixture.mass_fractions().map(|y| y * mass),
@@ -191,6 +232,16 @@ impl<S: SpeciesSet<N>, const N: usize, E: EquationOfState<S, N>> ControlVolume<S
         Volume::new::<cubic_meter>(self.volume)
     }
 
+    /// Vapour mass fraction inside the two-phase dome, `None` for one phase.
+    pub fn vapour_quality(&self) -> Option<f64> {
+        (!self.state.quality.is_nan()).then_some(self.state.quality)
+    }
+
+    /// Fraction of the volume filled with liquid.
+    pub fn liquid_fraction(&self) -> Ratio {
+        Ratio::new::<ratio>(self.state.liquid_fraction)
+    }
+
     /// Total mass.
     pub fn mass(&self) -> Mass {
         Mass::new::<kilogram>(self.mass)
@@ -274,7 +325,8 @@ impl<S: SpeciesSet<N>, const N: usize, E: EquationOfState<S, N>> GasPort<S, N>
 mod tests {
     use super::*;
     use crate::{
-        gas::eos::{IdealGas, PengRobinson},
+        fluid::PureFluid,
+        gas::eos::{IdealGas, PengRobinson, Reference},
         thermo::{Air3, ColdGas, MOLAR_GAS_CONSTANT},
     };
 
@@ -405,7 +457,10 @@ mod tests {
             ThermodynamicTemperature::new::<kelvin>(500.0),
             Volume::new::<cubic_meter>(0.2),
         )?;
-        anyhow::ensure!(via_new == via_eos, "{via_new:?} vs {via_eos:?}");
+        // Debug output, not ==: the NaN quality of a single phase never
+        // compares equal.
+        let (a, b) = (format!("{via_new:?}"), format!("{via_eos:?}"));
+        anyhow::ensure!(a == b, "{a} vs {b}");
         Ok(())
     }
 
@@ -472,6 +527,124 @@ mod tests {
             "spinodal state accepted at {:?}",
             cv.pressure()
         );
+        Ok(())
+    }
+
+    fn co2_bottle(
+        t: f64,
+        liquid: f64,
+    ) -> anyhow::Result<ControlVolume<ColdGas, 4, Reference<ColdGas, 4>>> {
+        ControlVolume::with_saturated(
+            Reference::new(PureFluid::CarbonDioxide)?,
+            Mixture::from_mass_fractions([0.0, 0.0, 0.0, 1.0])?,
+            ThermodynamicTemperature::new::<kelvin>(t),
+            Ratio::new::<ratio>(liquid),
+            Volume::new::<cubic_meter>(1e-3),
+        )
+    }
+
+    #[test]
+    fn test_control_volume_reference_eos_needs_its_species_in_the_set() -> anyhow::Result<()> {
+        for fluid in PureFluid::ALL {
+            Reference::<ColdGas, 4>::new(fluid)?;
+        }
+        anyhow::ensure!(
+            Reference::<Air3, 3>::new(PureFluid::Helium).is_err(),
+            "He in Air3"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_control_volume_saturated_co2_bottle_sits_on_the_saturation_line() -> anyhow::Result<()>
+    {
+        let cv = co2_bottle(290.0, 0.6)?;
+        cv.validate()?;
+        let sat =
+            PureFluid::CarbonDioxide.saturation(ThermodynamicTemperature::new::<kelvin>(290.0))?;
+        let p = cv.pressure().get::<pascal>();
+        anyhow::ensure!(
+            (p / sat.pressure.get::<pascal>() - 1.0).abs() < 1e-9,
+            "p = {p}"
+        );
+        let alpha = cv.liquid_fraction().get::<ratio>();
+        anyhow::ensure!((alpha - 0.6).abs() < 1e-9, "liquid fraction {alpha}");
+        let x = cv.vapour_quality().context("single phase")?;
+        anyhow::ensure!(x > 0.0 && x < 0.2, "quality {x}");
+        // What leaves through the top is saturated vapour.
+        let vapour = PureFluid::CarbonDioxide.homogeneous(
+            ThermodynamicTemperature::new::<kelvin>(290.0),
+            sat.vapour_density,
+        )?;
+        let h = cv.specific_enthalpy().get::<joule_per_kilogram>();
+        anyhow::ensure!(
+            (h - vapour.enthalpy.get::<joule_per_kilogram>()).abs() < 1e-6,
+            "h = {h}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_control_volume_venting_vapour_flash_cools_a_co2_bottle() -> anyhow::Result<()> {
+        let mut cv = co2_bottle(290.0, 0.6)?;
+        let mut masses = *cv.species_masses();
+        let mut u = cv.internal_energy().get::<joule>();
+        let mut last = cv.temperature().get::<kelvin>();
+        for _ in 0..40 {
+            let dm = 2e-3;
+            u -= dm * cv.specific_enthalpy().get::<joule_per_kilogram>();
+            masses[3] -= dm;
+            cv.set_conserved(&masses, u, 1e-3);
+            cv.validate()?;
+            let t = cv.temperature().get::<kelvin>();
+            anyhow::ensure!(t < last, "T rose from {last} to {t}");
+            anyhow::ensure!(cv.vapour_quality().is_some(), "left the dome at {t} K");
+            last = t;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_control_volume_reference_nitrogen_matches_the_fluid() -> anyhow::Result<()> {
+        let cv = ControlVolume::with_eos(
+            Reference::new(PureFluid::Nitrogen)?,
+            Mixture::<ColdGas, 4>::from_mass_fractions([1.0, 0.0, 0.0, 0.0])?,
+            Pressure::new::<pascal>(3e7),
+            ThermodynamicTemperature::new::<kelvin>(300.0),
+            Volume::new::<cubic_meter>(0.01),
+        )?;
+        cv.validate()?;
+        let rho = PureFluid::Nitrogen
+            .properties(
+                Pressure::new::<pascal>(3e7),
+                ThermodynamicTemperature::new::<kelvin>(300.0),
+            )?
+            .density
+            .get::<crate::units::mass_density::kilogram_per_cubic_meter>();
+        let m = cv.mass().get::<kilogram>();
+        anyhow::ensure!((m / (rho * 0.01) - 1.0).abs() < 1e-12, "mass {m}");
+        anyhow::ensure!(
+            cv.vapour_quality().is_none() && cv.liquid_fraction().get::<ratio>() < 1.0,
+            "phase"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_control_volume_reference_eos_rejects_other_species() -> anyhow::Result<()> {
+        let mut cv = co2_bottle(290.0, 0.6)?;
+        let mut masses = *cv.species_masses();
+        masses[0] = 1e-3; // a little nitrogen
+        cv.set_conserved(&masses, cv.internal_energy().get::<joule>(), 1e-3);
+        anyhow::ensure!(cv.validate().is_err(), "mixture accepted");
+        let ideal = ControlVolume::with_saturated(
+            IdealGas,
+            Mixture::<Air3, 3>::dry_air()?,
+            ThermodynamicTemperature::new::<kelvin>(100.0),
+            Ratio::new::<ratio>(0.5),
+            Volume::new::<cubic_meter>(1e-3),
+        );
+        anyhow::ensure!(ideal.is_err(), "ideal gas saturated");
         Ok(())
     }
 
