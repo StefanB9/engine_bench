@@ -78,13 +78,13 @@ fn describe_engine(engine: EngineId, out: &mut impl Write) -> anyhow::Result<()>
                 format!("one of {}, default {default}", keys.join(", "))
             }
         };
-        writeln!(out, "  {:<10} {:<34} {detail}", control.key, control.label)?;
+        writeln!(out, "  {:<15} {:<34} {detail}", control.key, control.label)?;
     }
     writeln!(out, "\nchannels (SI):")?;
     for channel in engine.channels() {
         writeln!(
             out,
-            "  {:<10} {:<34} {} {:?}",
+            "  {:<15} {:<34} {} {:?}",
             channel.key,
             channel.label,
             quantity_name(channel.quantity),
