@@ -17,7 +17,14 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 const SOURCE: &str = "data/thermo.inp";
 const EXPECTED_EXPONENTS: [f64; 8] = [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 0.0];
-const ELEMENTS: [(&str, &str); 5] = [("H", "H"), ("C", "C"), ("N", "N"), ("O", "O"), ("AR", "Ar")];
+const ELEMENTS: [(&str, &str); 6] = [
+    ("H", "H"),
+    ("C", "C"),
+    ("N", "N"),
+    ("O", "O"),
+    ("AR", "Ar"),
+    ("HE", "He"),
+];
 
 struct Interval {
     t_min: f64,

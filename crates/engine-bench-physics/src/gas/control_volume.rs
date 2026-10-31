@@ -2,10 +2,13 @@
 
 use anyhow::Context;
 
-use super::GasPort;
+use super::{
+    GasPort,
+    eos::{EquationOfState, FluidState, IdealGas},
+};
 use crate::{
     PhysicsError,
-    flow::{PerfectGas, Reservoir},
+    flow::Reservoir,
     thermo::{Mixture, SpeciesSet},
     units::{
         AvailableEnergy, Energy, Mass, Pressure, SpecificHeatCapacity, ThermodynamicTemperature,
@@ -15,33 +18,48 @@ use crate::{
     },
 };
 
-/// Gas in a volume, tracked by its conserved quantities.
+/// Gas in a volume, tracked by its conserved quantities, with the equation of
+/// state `E` (ideal gas unless chosen otherwise).
 ///
 /// The ODE state of a model holds the species masses and the internal energy;
 /// after every state change call [`set_conserved`](Self::set_conserved), which
 /// recomputes temperature (warm-started from the previous one), pressure and
 /// the cached properties.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ControlVolume<S: SpeciesSet<N>, const N: usize> {
+pub struct ControlVolume<S: SpeciesSet<N>, const N: usize, E: EquationOfState<S, N> = IdealGas> {
     /// kg per species, in set order.
     masses: [f64; N],
     /// J.
     internal_energy: f64,
     /// m³.
     volume: f64,
+    eos: E,
     // Derived by `refresh`.
     mixture: Mixture<S, N>,
     mass: f64,
-    temperature: f64,
-    pressure: f64,
-    specific_enthalpy: f64,
-    gas: PerfectGas,
+    state: FluidState,
+    /// The equation of state found a stable state in the last refresh.
+    solved: bool,
 }
 
 impl<S: SpeciesSet<N>, const N: usize> ControlVolume<S, N> {
-    /// Gas of composition `mixture` at pressure `p` and temperature `t` filling
-    /// `volume`.
+    /// Ideal gas of composition `mixture` at pressure `p` and temperature `t`
+    /// filling `volume`.
     pub fn new(
+        mixture: Mixture<S, N>,
+        p: Pressure,
+        t: ThermodynamicTemperature,
+        volume: Volume,
+    ) -> anyhow::Result<Self> {
+        Self::with_eos(IdealGas, mixture, p, t, volume)
+    }
+}
+
+impl<S: SpeciesSet<N>, const N: usize, E: EquationOfState<S, N>> ControlVolume<S, N, E> {
+    /// Gas of composition `mixture` at pressure `p` and temperature `t` filling
+    /// `volume`, described by the equation of state `eos`.
+    pub fn with_eos(
+        eos: E,
         mixture: Mixture<S, N>,
         p: Pressure,
         t: ThermodynamicTemperature,
@@ -58,20 +76,19 @@ impl<S: SpeciesSet<N>, const N: usize> ControlVolume<S, N> {
                 .with_context(|| format!("V = {volume} m³"));
         }
         check_temperature::<S, N>(temperature).context("control volume")?;
-        let mass = pressure * volume / (mixture.gas_constant_si() * temperature);
+        let state = eos
+            .state_pt(&mixture, pressure, temperature)
+            .context("control volume")?;
+        let mass = volume / state.v;
         let mut cv = Self {
             masses: mixture.mass_fractions().map(|y| y * mass),
-            internal_energy: mass * mixture.internal_energy_si(temperature),
+            internal_energy: mass * state.u,
             volume,
+            eos,
             mixture,
             mass,
-            temperature,
-            pressure,
-            specific_enthalpy: 0.0,
-            gas: PerfectGas {
-                gamma: 1.4,
-                gas_constant: 1.0,
-            },
+            state,
+            solved: true,
         };
         cv.refresh();
         Ok(cv)
@@ -88,24 +105,28 @@ impl<S: SpeciesSet<N>, const N: usize> ControlVolume<S, N> {
         self.refresh();
     }
 
-    /// Recomputes the derived state, warm-starting the temperature inversion
-    /// from the previous temperature.
+    /// Recomputes the derived state, warm-starting the equation of state from
+    /// the previous temperature.
     #[inline]
     fn refresh(&mut self) {
         self.mass = self.masses.iter().sum();
         self.mixture = Mixture::from_masses_unchecked(&self.masses);
-        let r = self.mixture.gas_constant_si();
-        self.temperature = self.mixture.temperature_from_internal_energy_si(
+        let state = self.eos.state_uv(
+            &self.mixture,
             self.internal_energy / self.mass,
-            self.temperature,
+            self.volume / self.mass,
+            &self.state,
         );
-        self.pressure = self.mass * r * self.temperature / self.volume;
-        let (h, cp) = self.mixture.enthalpy_and_cp_si(self.temperature);
-        self.specific_enthalpy = h;
-        self.gas = PerfectGas {
-            gamma: cp / (cp - r),
-            gas_constant: r,
+        // Keep the last good temperature as the next warm start.
+        self.state = if state.t.is_nan() {
+            FluidState {
+                t: self.state.t,
+                ..state
+            }
+        } else {
+            state
         };
+        self.solved = !state.t.is_nan();
     }
 
     /// Checks that the derived state is physical: finite, non-negative masses
@@ -136,10 +157,21 @@ impl<S: SpeciesSet<N>, const N: usize> ControlVolume<S, N> {
             return Err(PhysicsError::InvalidGeometry("volume must be positive"))
                 .with_context(|| format!("V = {} m³", self.volume));
         }
-        check_temperature::<S, N>(self.temperature).context("control volume")?;
-        if !(self.pressure > 0.0 && self.pressure.is_finite()) {
+        if !self.solved {
+            return Err(PhysicsError::InvalidState(
+                "the equation of state has no stable state here",
+            ))
+            .with_context(|| {
+                format!(
+                    "U = {} J, V = {} m³, m = {} kg",
+                    self.internal_energy, self.volume, self.mass
+                )
+            });
+        }
+        check_temperature::<S, N>(self.state.t).context("control volume")?;
+        if !(self.state.p > 0.0 && self.state.p.is_finite()) {
             return Err(PhysicsError::InvalidState("pressure must be positive"))
-                .with_context(|| format!("p = {} Pa", self.pressure));
+                .with_context(|| format!("p = {} Pa", self.state.p));
         }
         Ok(())
     }
@@ -171,18 +203,18 @@ impl<S: SpeciesSet<N>, const N: usize> ControlVolume<S, N> {
 
     /// Temperature.
     pub fn temperature(&self) -> ThermodynamicTemperature {
-        ThermodynamicTemperature::new::<kelvin>(self.temperature)
+        ThermodynamicTemperature::new::<kelvin>(self.state.t)
     }
 
     /// Pressure.
     pub fn pressure(&self) -> Pressure {
-        Pressure::new::<pascal>(self.pressure)
+        Pressure::new::<pascal>(self.state.p)
     }
 
     /// Specific entropy of the contents.
     pub fn specific_entropy(&self) -> SpecificHeatCapacity {
         SpecificHeatCapacity::new::<joule_per_kilogram_kelvin>(
-            self.mixture.entropy_si(self.temperature, self.pressure),
+            self.eos.entropy(&self.mixture, &self.state),
         )
     }
 
@@ -190,7 +222,7 @@ impl<S: SpeciesSet<N>, const N: usize> ControlVolume<S, N> {
     /// volume changing at `volume_rate` m³/s.
     #[inline]
     pub fn boundary_work_rate(&self, volume_rate: f64) -> f64 {
-        -self.pressure * volume_rate
+        -self.state.p * volume_rate
     }
 }
 
@@ -218,12 +250,14 @@ pub(super) fn check_temperature<S: SpeciesSet<N>, const N: usize>(
     }
 }
 
-impl<S: SpeciesSet<N>, const N: usize> GasPort<S, N> for ControlVolume<S, N> {
+impl<S: SpeciesSet<N>, const N: usize, E: EquationOfState<S, N>> GasPort<S, N>
+    for ControlVolume<S, N, E>
+{
     fn reservoir(&self) -> Reservoir {
         Reservoir {
-            pressure: self.pressure,
-            temperature: self.temperature,
-            gas: self.gas,
+            pressure: self.state.p,
+            temperature: self.state.t,
+            gas: self.state.perfect_gas(),
         }
     }
 
@@ -232,14 +266,17 @@ impl<S: SpeciesSet<N>, const N: usize> GasPort<S, N> for ControlVolume<S, N> {
     }
 
     fn specific_enthalpy(&self) -> AvailableEnergy {
-        AvailableEnergy::new::<joule_per_kilogram>(self.specific_enthalpy)
+        AvailableEnergy::new::<joule_per_kilogram>(self.state.h)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::thermo::{Air3, MOLAR_GAS_CONSTANT};
+    use crate::{
+        gas::eos::{IdealGas, PengRobinson},
+        thermo::{Air3, ColdGas, MOLAR_GAS_CONSTANT},
+    };
 
     fn tank(p: f64, t: f64, v: f64) -> anyhow::Result<ControlVolume<Air3, 3>> {
         ControlVolume::new(
@@ -342,6 +379,99 @@ mod tests {
 
         cv.set_conserved(&[0.0; 3], 0.0, 0.1);
         anyhow::ensure!(cv.validate().is_err(), "empty volume accepted");
+        Ok(())
+    }
+
+    fn nitrogen_tank(
+        p: f64,
+        t: f64,
+    ) -> anyhow::Result<ControlVolume<ColdGas, 4, PengRobinson<ColdGas, 4>>> {
+        ControlVolume::with_eos(
+            PengRobinson::new()?,
+            Mixture::from_mass_fractions([1.0, 0.0, 0.0, 0.0])?,
+            Pressure::new::<pascal>(p),
+            ThermodynamicTemperature::new::<kelvin>(t),
+            Volume::new::<cubic_meter>(0.01),
+        )
+    }
+
+    #[test]
+    fn test_control_volume_with_ideal_gas_eos_matches_new() -> anyhow::Result<()> {
+        let via_new = tank(4e5, 500.0, 0.2)?;
+        let via_eos = ControlVolume::with_eos(
+            IdealGas,
+            Mixture::dry_air()?,
+            Pressure::new::<pascal>(4e5),
+            ThermodynamicTemperature::new::<kelvin>(500.0),
+            Volume::new::<cubic_meter>(0.2),
+        )?;
+        anyhow::ensure!(via_new == via_eos, "{via_new:?} vs {via_eos:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_control_volume_peng_robinson_tank_holds_more_than_ideal() -> anyhow::Result<()> {
+        // 100 bar of N2 at 200 K is ~16 % denser than an ideal gas (Z = 0.845).
+        let cv = nitrogen_tank(1e7, 200.0)?;
+        cv.validate()?;
+        let (p, t) = (
+            cv.pressure().get::<pascal>(),
+            cv.temperature().get::<kelvin>(),
+        );
+        anyhow::ensure!(
+            (p / 1e7 - 1.0).abs() < 1e-9 && (t / 200.0 - 1.0).abs() < 1e-10,
+            "{p} Pa, {t} K"
+        );
+        let r = cv.mixture().gas_constant_si();
+        let ideal_mass = 1e7 * 0.01 / (r * 200.0);
+        anyhow::ensure!(
+            cv.mass().get::<kilogram>() > 1.15 * ideal_mass,
+            "mass {:?}",
+            cv.mass()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_control_volume_peng_robinson_round_trips_and_heats() -> anyhow::Result<()> {
+        let mut cv = nitrogen_tank(1e7, 250.0)?;
+        let masses = *cv.species_masses();
+        let u = cv.internal_energy().get::<joule>();
+        cv.set_conserved(&masses, u, 0.01);
+        cv.validate()?;
+        let t = cv.temperature().get::<kelvin>();
+        anyhow::ensure!((t / 250.0 - 1.0).abs() < 1e-10, "T = {t}");
+        let mut last = t;
+        for step in 1..20 {
+            cv.set_conserved(&masses, u + f64::from(step) * 1e4, 0.01);
+            cv.validate()?;
+            let t = cv.temperature().get::<kelvin>();
+            anyhow::ensure!(t > last, "T fell to {t}");
+            last = t;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_control_volume_peng_robinson_rejects_a_state_inside_the_spinodal() -> anyhow::Result<()>
+    {
+        let co2 = Mixture::<ColdGas, 4>::from_mass_fractions([0.0, 0.0, 0.0, 1.0])?;
+        let mut cv = ControlVolume::with_eos(
+            PengRobinson::new()?,
+            co2,
+            Pressure::new::<pascal>(30e5),
+            ThermodynamicTemperature::new::<kelvin>(250.0),
+            Volume::new::<cubic_meter>(0.01),
+        )?;
+        cv.validate()?;
+        // Same mass and energy spread over four times the volume.
+        let masses = *cv.species_masses();
+        cv.set_conserved(&masses, cv.internal_energy().get::<joule>(), 0.04);
+        anyhow::ensure!(
+            cv.validate().is_err(),
+            "spinodal state accepted at {:?}",
+            cv.pressure()
+        );
         Ok(())
     }
 

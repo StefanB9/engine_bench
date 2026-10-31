@@ -64,6 +64,20 @@ impl SpeciesSet<7> for Major7 {
     ];
 }
 
+/// The cold-gas thruster propellants: N₂, Ar, He, CO₂.
+///
+/// Valid from 60 K, below NASA's data (200 K; 300 K for He): the species fall
+/// back to constant `c_p` there, which is exact for monatomic He and Ar and
+/// within ~0.1 % for N₂, whose vibration is frozen far below 200 K. CO₂ never
+/// gets that cold as a gas: it freezes at its 216.6 K triple point.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ColdGas;
+
+impl SpeciesSet<4> for ColdGas {
+    const SPECIES: [&'static Species; 4] = [&gases::N2, &gases::AR, &gases::HE, &gases::CO2];
+    const TEMPERATURE_RANGE: (f64, f64) = (60.0, 6000.0);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,6 +89,30 @@ mod tests {
         // H2O data stops at 6000 K.
         let major = Major7::temperature_range_kelvin();
         anyhow::ensure!(major == (200.0, 6000.0), "Major7 {major:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_cold_gas_holds_the_four_propellants_down_to_60_k() -> anyhow::Result<()> {
+        let names = ColdGas::SPECIES.map(Species::name);
+        anyhow::ensure!(names == ["N2", "Ar", "He", "CO2"], "{names:?}");
+        let range = ColdGas::temperature_range_kelvin();
+        anyhow::ensure!(range == (60.0, 6000.0), "ColdGas {range:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_helium_is_monatomic_below_its_data_range() -> anyhow::Result<()> {
+        use crate::thermo::{MOLAR_GAS_CONSTANT, TemperaturePowers};
+        // NASA's helium fit starts at 300 K; cp = 5/2 R holds at every
+        // temperature.
+        for t in [60.0, 150.0, 300.0, 900.0] {
+            let cp = gases::HE.cp_over_r(&TemperaturePowers::from_kelvin(t)) * MOLAR_GAS_CONSTANT;
+            anyhow::ensure!(
+                (cp / (2.5 * MOLAR_GAS_CONSTANT) - 1.0).abs() < 1e-12,
+                "cp({t} K) = {cp}"
+            );
+        }
         Ok(())
     }
 

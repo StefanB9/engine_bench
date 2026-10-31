@@ -19,6 +19,8 @@ pub enum Element {
     O,
     /// Argon.
     Ar,
+    /// Helium.
+    He,
 }
 
 /// One temperature interval `[t_min, t_max]` of a species fit.
@@ -205,11 +207,11 @@ mod tests {
     }
 
     #[test]
-    fn test_gases_all_has_twelve_unique_species() -> anyhow::Result<()> {
+    fn test_gases_all_has_thirteen_unique_species() -> anyhow::Result<()> {
         let mut names: Vec<&str> = gases::ALL.iter().map(|s| s.name()).collect();
         names.sort_unstable();
         names.dedup();
-        anyhow::ensure!(names.len() == 12, "species {names:?}");
+        anyhow::ensure!(names.len() == 13, "species {names:?}");
         Ok(())
     }
 
