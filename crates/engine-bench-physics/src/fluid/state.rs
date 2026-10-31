@@ -86,7 +86,7 @@ pub(crate) fn density_si(fluid: &Fluid, p: f64, t: f64) -> anyhow::Result<f64> {
 
 /// Densest state searched, mol/m³: three times the liquid at the triple point
 /// (cold, dense supercritical helium reaches ~1.5 times).
-fn max_density(fluid: &Fluid) -> f64 {
+pub(super) fn max_density(fluid: &Fluid) -> f64 {
     3.0 * ancillary(&fluid.data.liquid_density, fluid.data.t_triple)
 }
 

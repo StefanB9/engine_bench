@@ -46,15 +46,24 @@ impl RealFluid for PureFluid {
         };
         // Along an isobar s rises with T, nearly linearly in ln T: ∂s/∂ln T =
         // c_p. Next to the dome a bracket end can sit on the far side by
-        // round-off; that saturated state is then the answer.
+        // round-off; that saturated state is then the answer. Further outside,
+        // the state is colder than the triple point (solid, not modelled) or
+        // hotter than the equation's range.
         let entropy_at = |t: f64| -> anyhow::Result<f64> {
             let rho = density_si(fluid, p, t)?;
             Ok(molar(fluid, rho, t).s - s)
         };
-        let t = if entropy_at(lo)? >= 0.0 {
-            lo
-        } else if entropy_at(hi)? <= 0.0 {
-            hi
+        let round_off = 1e-9 * s.abs().max(fluid.data.gas_constant);
+        let (r_lo, r_hi) = (entropy_at(lo)?, entropy_at(hi)?);
+        let t = if r_lo >= 0.0 || r_hi <= 0.0 {
+            let (t, r) = if r_lo >= 0.0 { (lo, r_lo) } else { (hi, r_hi) };
+            if r.abs() > round_off {
+                return Err(PhysicsError::InvalidState(
+                    "isentropic state outside the equation's temperature range",
+                ))
+                .with_context(|| format!("{self:?} at {p} Pa, s = {s} J/(mol K)"));
+            }
+            t
         } else {
             let mut failure = None;
             let ln_t = newton_bracketed(
@@ -102,6 +111,13 @@ impl RealFluid for PureFluid {
         // can have other roots there, so the search starts at the edge.
         let lo = dome_edge(fluid, rho)?.unwrap_or(fluid.data.t_triple);
         let hi = fluid.data.t_max;
+        // A saturated phase sits on the edge itself, where the pressure can
+        // overshoot by round-off (in ρ, amplified by ∂p/∂ρ for a liquid): the
+        // edge is then the answer.
+        let edge = molar(fluid, rho, lo);
+        if edge.p >= p && edge.p - p <= (1e-9 * p).max(1e-12 * rho * edge.dp_drho) {
+            return Ok(single_phase(fluid, &edge, rho, lo));
+        }
         let t = newton_bracketed(
             |t| {
                 let x = molar(fluid, rho, t);
@@ -129,7 +145,7 @@ fn check_pressure(fluid: &Fluid, p: f64) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn single_phase(fluid: &Fluid, x: &Molar, rho: f64, t: f64) -> FlowState {
+pub(super) fn single_phase(fluid: &Fluid, x: &Molar, rho: f64, t: f64) -> FlowState {
     let m = fluid.data.molar_mass;
     FlowState::from_si(x.p, t, rho * m, x.h / m, x.s / m, x.w, f64::NAN)
 }
@@ -228,6 +244,42 @@ mod tests {
             Just(PureFluid::Helium),
             Just(PureFluid::CarbonDioxide),
         ]
+    }
+
+    #[test]
+    fn test_pure_fluid_state_prho_accepts_saturated_phases() -> anyhow::Result<()> {
+        // On the saturation line the search's lower end, the dome's edge, can
+        // overshoot the pressure by round-off.
+        for fluid in PureFluid::ALL {
+            let data = fluid.data().data;
+            for i in 1..200 {
+                let t = data.t_triple + (data.t_crit - data.t_triple) * f64::from(i) / 201.0;
+                let sat = fluid.saturation(ThermodynamicTemperature::new::<kelvin>(t))?;
+                for rho in [sat.vapour_density, sat.liquid_density] {
+                    let state = fluid
+                        .state_prho(sat.pressure, rho)
+                        .with_context(|| format!("{fluid:?} at {t} K, {rho:?}"))?;
+                    let got = state.temperature.get::<kelvin>();
+                    anyhow::ensure!((got / t - 1.0).abs() < 1e-8, "{fluid:?}: {got} K vs {t} K");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_pure_fluid_state_ps_rejects_states_colder_than_the_triple_point() -> anyhow::Result<()>
+    {
+        // N2 from 20 bar and 300 K expanded to 2.5 kPa, below the triple
+        // pressure: equilibrium would end below 63.15 K, as solid.
+        let n2 = PureFluid::Nitrogen;
+        let start = n2.properties(
+            Pressure::new::<pascal>(2e6),
+            ThermodynamicTemperature::new::<kelvin>(300.0),
+        )?;
+        let result = n2.state_ps(Pressure::new::<pascal>(2.5e3), start.entropy);
+        anyhow::ensure!(result.is_err(), "{result:?}");
+        Ok(())
     }
 
     proptest! {

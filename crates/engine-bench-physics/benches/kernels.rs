@@ -11,7 +11,7 @@ use engine_bench_physics::{
         Nozzle, Orifice, PerfectGas, Reservoir,
         real::{RealFluid, Stagnation},
     },
-    fluid::PureFluid,
+    fluid::{FrozenVapour, PureFluid, TabulatedFluid},
     gas::{
         ControlVolume,
         eos::{PengRobinson, Reference},
@@ -361,6 +361,88 @@ fn real_flow(c: &mut Criterion) -> anyhow::Result<()> {
             b.iter(|| nozzle.real_operating_point(&n2, black_box(&nitrogen), black_box(p_back)));
         });
     }
+
+    Ok(())
+}
+
+/// The real-flow points through the tables (built once, before timing).
+fn tabulated_flow(c: &mut Criterion) -> anyhow::Result<()> {
+    let n2 = PureFluid::Nitrogen;
+    let props = n2.properties(
+        Pressure::new::<pascal>(2e7),
+        ThermodynamicTemperature::new::<kelvin>(300.0),
+    )?;
+    let start = n2.state_prho(props.pressure, props.density)?;
+    let s0 = start.entropy;
+    let nitrogen = Stagnation::at_rest(&start);
+    let orifice = Orifice::new(Area::new::<square_meter>(1e-5), 0.8)?;
+    let nozzle = Nozzle::new(
+        Area::new::<square_meter>(1e-5),
+        Area::new::<square_meter>(4e-5),
+    )?;
+    let (tabulated, frozen) = (
+        TabulatedFluid::equilibrium(n2)?,
+        TabulatedFluid::frozen(n2)?,
+    );
+    c.bench_function("real_state/tabulated_n2_ps", |b| {
+        b.iter(|| tabulated.state_ps(black_box(Pressure::new::<pascal>(1e7)), black_box(s0)));
+    });
+    for (name, p_down) in [("unchoked", 1.8e7), ("choked", 1e5)] {
+        let p_down = Pressure::new::<pascal>(p_down);
+        c.bench_function(&format!("real_orifice/tabulated_n2_{name}"), |b| {
+            b.iter(|| orifice.real_mass_flow(&tabulated, black_box(&nitrogen), black_box(p_down)));
+        });
+    }
+    let vacuum_nozzle = Nozzle::new(
+        Area::new::<square_meter>(1e-6),
+        Area::new::<square_meter>(5e-5),
+    )?;
+    let vacuum = Pressure::new::<pascal>(0.0);
+    c.bench_function("real_nozzle/frozen_n2_200_bar_vacuum_ratio_50_exact", |b| {
+        b.iter(|| {
+            vacuum_nozzle.real_operating_point(
+                &FrozenVapour::new(n2),
+                black_box(&nitrogen),
+                black_box(vacuum),
+            )
+        });
+    });
+    c.bench_function(
+        "real_nozzle/frozen_n2_200_bar_vacuum_ratio_50_tabulated",
+        |b| {
+            b.iter(|| {
+                vacuum_nozzle.real_operating_point(&frozen, black_box(&nitrogen), black_box(vacuum))
+            });
+        },
+    );
+    // A regulated plenum, 10 bar and 290 K, into vacuum.
+    let plenum_props = n2.properties(
+        Pressure::new::<pascal>(1e6),
+        ThermodynamicTemperature::new::<kelvin>(290.0),
+    )?;
+    let plenum = Stagnation::at_rest(&n2.state_prho(plenum_props.pressure, plenum_props.density)?);
+    for area_ratio in [50.0, 100.0] {
+        let nozzle = Nozzle::new(
+            Area::new::<square_meter>(1e-6),
+            Area::new::<square_meter>(area_ratio * 1e-6),
+        )?;
+        c.bench_function(
+            &format!("real_nozzle/tabulated_frozen_n2_10_bar_vacuum_area_ratio_{area_ratio}"),
+            |b| {
+                b.iter(|| {
+                    nozzle.real_operating_point(&frozen, black_box(&plenum), black_box(vacuum))
+                });
+            },
+        );
+    }
+    for (name, p_back) in [("under_expanded", 1e5), ("shock_in_nozzle", 1.2e7)] {
+        let p_back = Pressure::new::<pascal>(p_back);
+        c.bench_function(&format!("real_nozzle/tabulated_frozen_n2_{name}"), |b| {
+            b.iter(|| {
+                nozzle.real_operating_point(&frozen, black_box(&nitrogen), black_box(p_back))
+            });
+        });
+    }
     Ok(())
 }
 
@@ -375,6 +457,12 @@ fn flow_benches(c: &mut Criterion) {
     }
     if let Err(e) = real_flow(c) {
         let _ = writeln!(std::io::stderr(), "real-flow benchmarks skipped: {e:#}");
+    }
+    if let Err(e) = tabulated_flow(c) {
+        let _ = writeln!(
+            std::io::stderr(),
+            "tabulated-flow benchmarks skipped: {e:#}"
+        );
     }
     if let Err(e) = steam_kernels(c) {
         let _ = writeln!(std::io::stderr(), "steam benchmarks skipped: {e:#}");

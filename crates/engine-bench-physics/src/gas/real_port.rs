@@ -9,11 +9,14 @@ use super::{
     eos::{EosFluid, EquationOfState, IdealGas},
 };
 use crate::{
-    flow::{Orifice, real::Stagnation},
+    flow::{
+        Orifice,
+        real::{RealFluid, Stagnation},
+    },
     thermo::SpeciesSet,
     units::{
-        MassRate, Pressure, available_energy::joule_per_kilogram, mass_rate::kilogram_per_second,
-        pressure::pascal,
+        MassDensity, MassRate, Pressure, available_energy::joule_per_kilogram,
+        mass_density::kilogram_per_cubic_meter, mass_rate::kilogram_per_second, pressure::pascal,
     },
 };
 
@@ -25,6 +28,13 @@ pub trait RealPort<S: SpeciesSet<N>, const N: usize>: GasPort<S, N> {
     fn port_stagnation(&self) -> anyhow::Result<Stagnation>;
     /// Mass flow out through `orifice` into `p_down` (≤ the port pressure).
     fn outflow(&self, orifice: &Orifice, p_down: Pressure) -> anyhow::Result<MassRate>;
+    /// Stagnation state of what leaves through the port, any state the port
+    /// cannot give directly coming from `fluid` (which must describe the
+    /// port's contents).
+    fn port_stagnation_in<F: RealFluid>(&self, fluid: &F) -> anyhow::Result<Stagnation> {
+        let _ = fluid;
+        self.port_stagnation()
+    }
 }
 
 impl<S: SpeciesSet<N>, const N: usize, E: EquationOfState<S, N>> RealPort<S, N>
@@ -35,6 +45,13 @@ impl<S: SpeciesSet<N>, const N: usize, E: EquationOfState<S, N>> RealPort<S, N>
     }
 
     fn port_stagnation(&self) -> anyhow::Result<Stagnation> {
+        self.port_stagnation_in(&EosFluid {
+            eos: self.eos(),
+            mixture: self.mixture(),
+        })
+    }
+
+    fn port_stagnation_in<F: RealFluid>(&self, fluid: &F) -> anyhow::Result<Stagnation> {
         let state = self.fluid_state();
         if state.quality.is_nan() {
             return Ok(Stagnation {
@@ -45,9 +62,11 @@ impl<S: SpeciesSet<N>, const N: usize, E: EquationOfState<S, N>> RealPort<S, N>
         }
         // Two-phase: the port draws saturated vapour, of density p/(Z·R·T).
         let rho = state.p / (state.gas_constant * state.t);
-        let vapour = self
-            .eos()
-            .flow_state_prho(self.mixture(), state.p, rho)
+        let vapour = fluid
+            .state_prho(
+                Pressure::new::<pascal>(state.p),
+                MassDensity::new::<kilogram_per_cubic_meter>(rho),
+            )
             .context("saturated vapour at the port")?;
         Ok(Stagnation::at_rest(&vapour))
     }
@@ -92,20 +111,49 @@ pub fn real_orifice_transfer<S: SpeciesSet<N>, const N: usize>(
     a: &impl RealPort<S, N>,
     b: &impl RealPort<S, N>,
 ) -> anyhow::Result<Transfer<N>> {
+    transfer(
+        a,
+        b,
+        |a, p_down| a.outflow(orifice, p_down),
+        |b, p_down| b.outflow(orifice, p_down),
+    )
+}
+
+/// [`real_orifice_transfer`] with the expansion computed in `fluid`, which
+/// must describe what both ports hold: e.g. a
+/// [`TabulatedFluid`](crate::fluid::TabulatedFluid) for real time.
+pub fn real_orifice_transfer_in<S: SpeciesSet<N>, const N: usize, F: RealFluid>(
+    fluid: &F,
+    orifice: &Orifice,
+    a: &impl RealPort<S, N>,
+    b: &impl RealPort<S, N>,
+) -> anyhow::Result<Transfer<N>> {
+    transfer(
+        a,
+        b,
+        |a, p_down| orifice.real_mass_flow(fluid, &a.port_stagnation_in(fluid)?, p_down),
+        |b, p_down| orifice.real_mass_flow(fluid, &b.port_stagnation_in(fluid)?, p_down),
+    )
+}
+
+/// The transfer between `a` and `b`, the mass flow out of the upstream port
+/// from `out_a` or `out_b` given the downstream pressure.
+fn transfer<S: SpeciesSet<N>, const N: usize, A: RealPort<S, N>, B: RealPort<S, N>>(
+    a: &A,
+    b: &B,
+    out_a: impl FnOnce(&A, Pressure) -> anyhow::Result<MassRate>,
+    out_b: impl FnOnce(&B, Pressure) -> anyhow::Result<MassRate>,
+) -> anyhow::Result<Transfer<N>> {
     let (pa, pb) = (a.port_pressure(), b.port_pressure());
     let (mass_flow, fractions, enthalpy) = if pa >= pb {
-        let flow = a
-            .outflow(orifice, pb)
-            .context("flow out of the first port")?;
+        let flow = out_a(a, pb).context("flow out of the first port")?;
         (
             flow.get::<kilogram_per_second>(),
             a.mass_fractions(),
             a.specific_enthalpy(),
         )
     } else {
-        let flow = b
-            .outflow(orifice, pa)
-            .context("flow out of the second port")?;
+        let flow = out_b(b, pa).context("flow out of the second port")?;
         (
             -flow.get::<kilogram_per_second>(),
             b.mass_fractions(),
@@ -182,6 +230,41 @@ mod tests {
                 .all(|(f, b)| f.to_bits() == (-b).to_bits()),
             "species"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_real_transfer_in_a_given_fluid_matches_the_volumes_own() -> anyhow::Result<()> {
+        // A CO2 bottle (liquid and vapour) feeding a CO2 plenum, both ways.
+        let co2 = Mixture::<ColdGas, 4>::from_mass_fractions([0.0, 0.0, 0.0, 1.0])?;
+        let bottle = ControlVolume::with_saturated(
+            Reference::new(PureFluid::CarbonDioxide)?,
+            co2,
+            ThermodynamicTemperature::new::<kelvin>(290.0),
+            Ratio::new::<ratio>(0.6),
+            Volume::new::<cubic_meter>(1e-3),
+        )?;
+        let plenum = ControlVolume::with_eos(
+            Reference::new(PureFluid::CarbonDioxide)?,
+            co2,
+            Pressure::new::<pascal>(1e6),
+            ThermodynamicTemperature::new::<kelvin>(280.0),
+            Volume::new::<cubic_meter>(1e-4),
+        )?;
+        let eos = Reference::<ColdGas, 4>::new(PureFluid::CarbonDioxide)?;
+        let fluid = EosFluid {
+            eos: &eos,
+            mixture: &co2,
+        };
+        for (a, b) in [(&bottle, &plenum), (&plenum, &bottle)] {
+            let given = real_orifice_transfer_in(&fluid, &orifice()?, a, b)?;
+            let own = real_orifice_transfer(&orifice()?, a, b)?;
+            anyhow::ensure!(
+                given.energy.to_bits() == own.energy.to_bits()
+                    && given.mass_flow().to_bits() == own.mass_flow().to_bits(),
+                "{given:?} vs {own:?}"
+            );
+        }
         Ok(())
     }
 

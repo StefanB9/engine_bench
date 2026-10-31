@@ -14,17 +14,21 @@
 )]
 mod coefficients;
 mod flow;
+mod frozen;
 mod helmholtz;
 mod saturation;
 mod state;
+mod table;
 
 use std::sync::LazyLock;
 
 use anyhow::Context;
 use coefficients::FluidData;
+pub use frozen::FrozenVapour;
 pub(crate) use helmholtz::{Molar, molar};
 pub(crate) use saturation::saturation_si;
 pub(crate) use state::{Phase, RawState, density_si, state_uv_si};
+pub use table::TabulatedFluid;
 
 use crate::{
     PhysicsError,
