@@ -100,15 +100,26 @@ cargo nextest run -p engine-bench-core        # Core-only tests
 cargo clippy --workspace --all-targets        # Zero warnings required (includes tests)
 cargo check --workspace --all-targets         # Type-check everything including tests
 cargo fmt --all -- --check                    # Format check
-cargo build -p engine-bench                   # Build the binary
-cargo run -p engine-bench                    # GUI (live simulation; Replay tab opens Parquet recordings)
-cargo run -p engine-bench -- list            # Engines; `list <engine>` shows controls and channels
-cargo run -p engine-bench -- run two-tank-demo --duration 10s --set valve=50% -o run.parquet
-cargo run -p engine-bench -- export run.parquet --csv run.csv --units engineering
+cargo build --release -p engine-bench         # Build the binary (release: the manual-testing build)
 cargo bench -p engine-bench-physics --profile bench-unwind   # Kernel benchmarks (plain `cargo bench` fails: build-std + immediate-abort)
 ```
 
 **Always use `cargo nextest run` instead of `cargo test`.** Nextest is the project's test runner.
+
+**Manual testing runs in release mode** unless debug is specifically needed (e.g. to see a panic message). Commands:
+
+```bash
+cargo run --release -p engine-bench           # GUI (live simulation; Replay tab opens Parquet recordings)
+cargo run --release -p engine-bench -- list two-tank-demo   # Engines; with a key: controls and channels
+cargo run --release -p engine-bench -- run two-tank-demo --duration 60s --set valve=50% -o run.parquet
+cargo run --release -p engine-bench -- sweep two-tank-demo --duration 60s --vary valve=10%:100%:5 -o sweep.parquet
+cargo run --release -p engine-bench -- export run.parquet --csv run.csv --units engineering
+```
+
+- The first release build takes about 9 minutes (fat LTO, one codegen unit, `build-std`); later runs reuse it. The binary is `target/release/engine-bench` (`.exe` on Windows) and takes the same arguments.
+- Release panics are silent (`panic = "immediate-abort"`: no message, no backtrace). To diagnose a crash, repeat the steps without `--release`.
+- Release logs at `INFO`; set `RUST_LOG` (PowerShell: `$env:RUST_LOG="engine_bench=debug"`) for more.
+- When handing the user commands to try, give them in release form.
 
 **Toolchain:** nightly (`rust-toolchain.toml`). The release profile uses `panic = "immediate-abort"` and `.cargo/config.toml` rebuilds std (`build-std`) with `target-cpu=native`.
 
