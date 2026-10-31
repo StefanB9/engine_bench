@@ -9,7 +9,7 @@ Parent plan: `0001-architecture-and-roadmap.md`, milestone M3 (catalogue engines
 | Steam/water | **Full IAPWS-IF97**, all five regions, with verification against the IF97 tables |
 | Cold, dense gas | **Peng–Robinson** real-gas EOS, used in volumes **and through nozzles and orifices** |
 | Cold-gas propellants | **N₂, Ar, He, CO₂**. CO₂ is stored as liquid + vapour |
-| Water rocket | **2D flight with launch tube and parachute** |
+| Water rocket | **2D flight with launch tube and parachute**, as a **3-DOF planar rigid body** (decided at the start of PR 1) |
 | Camera | **Scene sets its view**: an optional explicit view rectangle, still drawn from channels |
 | Real-gas shocks | **Full real-gas Rankine–Hugoniot** in the nozzle's shock regime |
 | Pressure regulator | **Optional** in the cold-gas thruster (setpoint 0 = pure blowdown) |
@@ -51,8 +51,16 @@ Parent plan: `0001-architecture-and-roadmap.md`, milestone M3 (catalogue engines
      the shock (Rankine–Hugoniot), a 2D Newton per shock. The shock is located in the nozzle so
      that the exit state matches the back pressure, as the perfect-gas nozzle does today.
    - Same API shape as `flow::Orifice` / `flow::Nozzle`.
-4. **`flight`**: International Standard Atmosphere (0–11 km), 2D point-mass dynamics with drag,
-   used by the water rocket.
+4. **`flight`**, used by the water rocket:
+   - International Standard Atmosphere, −500 m to 20 km (troposphere and the isothermal lower
+     stratosphere).
+   - Planar 3-DOF rigid body (x, y, pitch) with mass, inertia and centre of gravity supplied per
+     evaluation, so they can change as propellant leaves.
+   - Aerodynamics against the air-relative velocity (wind included): axial drag, normal force at
+     the centre of pressure, pitch damping, and jet damping from the exhaust mass flow.
+   - Barrowman normal-force slope and centre of pressure from nose, body and fin geometry, so
+     stability emerges from the geometry: a rocket with its centre of pressure ahead of its
+     centre of gravity tumbles.
 5. **Thermo data**: helium record and a `ColdGas` species set (N₂, Ar, He, CO₂).
 
 ## Core additions (`engine-bench-core`)
@@ -82,8 +90,10 @@ Parent plan: `0001-architecture-and-roadmap.md`, milestone M3 (catalogue engines
   4. Coast.
   5. Parachute descent.
   6. Ground contact.
-- **Flight**: 2D, with thrust along the body axis and the body weathervaning into the velocity
-  vector after leaving the tube.
+- **Flight**: 3-DOF planar rigid body. Thrust acts along the body axis; attitude follows from
+  the aerodynamic moments rather than being assumed. Geometry controls cover nose, body, fins
+  (count, root and tip chord, span, sweep) and ballast, so an unstable configuration tumbles.
+  CG and inertia shift as the water leaves.
 - **Channels**: x, y, velocity, attitude, water mass, air p and T, thrust, phase.
 - **Scene**: the camera follows the rocket through `Scene::set_view`, with ground line, launch
   tube, altitude grid and trajectory trace, a bottle cutaway showing the water level, and the
@@ -127,12 +137,14 @@ per propellant at reset, without changing the API.
   - Cold gas: ideal-limit thrust and Isp against `Nozzle`; total impulse ≈ ∫F dt; blowdown
     conservation; isothermal vs adiabatic limits.
   - Water rocket: analytic vacuum-free-fall coast; zero-drag 45° launch range against
-    projectile motion; water phase against the incompressible Bernoulli + adiabatic-air ODE.
+    projectile motion; a stable configuration weathervanes into the wind and an unstable one
+    tumbles; water phase against the incompressible Bernoulli + adiabatic-air ODE.
   - Aeolipile: steady ω with no friction equals v_jet / r; boiler energy balance.
 
 ## Delivery: 8 PRs, physics first
 
-1. `feature/m3-scene-view-flight`: `Scene` view, ISA atmosphere, 2D flight dynamics.
+1. `feature/m3-scene-view-flight`: `Scene` view, ISA atmosphere, 3-DOF rigid body,
+   aerodynamics, Barrowman.
 2. `feature/m3-if97-basic`: IF97 regions 1, 2, 4, 5 + verification.
 3. `feature/m3-if97-region3`: region 3, (u, v) solver, two-phase water/steam volume.
 4. `feature/m3-peng-robinson`: EOS trait, `ControlVolume` generic over the EOS, PR, VLE, He.
