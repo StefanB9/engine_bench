@@ -125,6 +125,7 @@ pub enum Shape {
 pub struct Scene {
     points: Vec<Point>,
     shapes: Vec<Shape>,
+    view: Option<(Point, Point)>,
 }
 
 impl Scene {
@@ -137,6 +138,7 @@ impl Scene {
     pub fn clear(&mut self) {
         self.points.clear();
         self.shapes.clear();
+        self.view = None;
     }
 
     fn push_points(&mut self, points: &[Point]) -> PointRange {
@@ -200,6 +202,27 @@ impl Scene {
         self.points
             .get(range.start..range.start + range.len)
             .unwrap_or_default()
+    }
+
+    /// Shows exactly the world rectangle `min`..`max` instead of fitting the
+    /// shapes, e.g. to follow a moving vehicle. Shapes outside it are clipped
+    /// by the renderer.
+    pub fn set_view(&mut self, min: Point, max: Point) {
+        self.view = Some((
+            Point::new(min.x.min(max.x), min.y.min(max.y)),
+            Point::new(min.x.max(max.x), min.y.max(max.y)),
+        ));
+    }
+
+    /// The explicit view, if one was set since the last [`clear`](Self::clear).
+    pub fn view(&self) -> Option<(Point, Point)> {
+        self.view
+    }
+
+    /// What to show: the explicit view if set, otherwise
+    /// [`bounds`](Self::bounds).
+    pub fn view_or_bounds(&self) -> Option<(Point, Point)> {
+        self.view.or_else(|| self.bounds())
     }
 
     /// Smallest axis-aligned box containing every shape, as (min, max); `None`
@@ -330,6 +353,38 @@ mod tests {
             (scene.points.capacity(), scene.shapes.capacity()) == capacity,
             "capacity dropped"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_scene_view_overrides_bounds_until_cleared() -> anyhow::Result<()> {
+        let mut scene = Scene::new();
+        scene.circle(Point::new(0.0, 0.0), 1.0, Fill::Metal, Stroke::None);
+        let fitted = scene.bounds();
+        anyhow::ensure!(
+            scene.view().is_none() && scene.view_or_bounds() == fitted,
+            "no view"
+        );
+        let view = (Point::new(10.0, 20.0), Point::new(30.0, 25.0));
+        scene.set_view(view.0, view.1);
+        anyhow::ensure!(scene.view() == Some(view), "{:?}", scene.view());
+        anyhow::ensure!(scene.view_or_bounds() == Some(view), "view not preferred");
+        // Bounds still describe the shapes.
+        anyhow::ensure!(scene.bounds() == fitted, "bounds changed");
+        scene.clear();
+        anyhow::ensure!(
+            scene.view().is_none() && scene.view_or_bounds().is_none(),
+            "view kept"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_scene_view_normalises_swapped_corners() -> anyhow::Result<()> {
+        let mut scene = Scene::new();
+        scene.set_view(Point::new(5.0, 9.0), Point::new(1.0, 3.0));
+        let expected = Some((Point::new(1.0, 3.0), Point::new(5.0, 9.0)));
+        anyhow::ensure!(scene.view() == expected, "{:?}", scene.view());
         Ok(())
     }
 

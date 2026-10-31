@@ -287,7 +287,7 @@ impl App {
             return;
         }
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::hover());
-        let Some(bounds) = self.scene.bounds() else {
+        let Some(bounds) = self.scene.view_or_bounds() else {
             return;
         };
         let view = ViewTransform::fit(bounds, response.rect, 40.0);
