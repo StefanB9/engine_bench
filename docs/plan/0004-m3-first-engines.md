@@ -143,6 +143,57 @@ reference EOS: each (p, s) state nests a temperature Newton around a density sol
 Tuning the solves cannot close this gap, so the isentrope tabulation above is expected in PR 6, as
 soon as the cold-gas thruster's real-time step is measured.
 
+## PR 6 design (decided at the start of PR 6)
+
+| Topic | Decision |
+|---|---|
+| Real-time speed | **`TabulatedFluid`**: a `RealFluid` built once per propellant, so every flow solver runs unchanged on it; offline mode keeps the exact EOS |
+| Nozzle condensation | **Frozen (supersaturated) vapour** in the nozzle now; **finite-rate condensation** (classical nucleation and droplet growth along the nozzle) in a later PR. Tank and orifices stay in equilibrium (HEM) |
+| Regulator | **Dynamic spring-loaded poppet**: mass–spring–damper driven by inlet and outlet pressure forces, flow area from lift, real-fluid orifice |
+| Tank wall | **Lumped wall thermal mass**: wall temperature state, convection fluid–wall and wall–ambient |
+| Fire valve | **Solenoid** with finite opening and closing times, **pulse mode** (pulse width, period) and continuous firing |
+| Propellant selector | New `ControlKind::Choice` (combo box in the GUI, `--set propellant=co2` on the command line) |
+
+Why: on the reference EOS a real-fluid orifice or throat point costs ~1.5 ms (see Performance
+budget), about 20× too slow for the thruster in real time. With an expansion ratio of ~50, N₂ from
+300 K reaches ~50 K at the nozzle exit, below its 63 K triple point (Ar 83.8 K, CO₂ 216.6 K), so
+the nozzle needs a model beyond equilibrium.
+
+### Frozen vapour expansion
+
+- A `RealFluid` adapter for `PureFluid` whose (p, s) and (p, ρ) states stay on the vapour branch of
+  the Helmholtz equation: metastable inside the dome, and continued below the triple point (the
+  ideal part is analytic there, the residual part small at nozzle densities). Beyond the vapour
+  spinodal (no stable vapour root) it fails: spontaneous condensation would occur.
+- The thruster reports the supersaturation ratio p/p_sat at the nozzle exit (p_sat from the
+  saturation line, extrapolated below the triple point as the sublimation line is not modelled).
+
+### `TabulatedFluid`
+
+- Built once per propellant and process (cached), over the propellant's whole envelope in
+  (ln p, s).
+- Two branch tables, vapour and liquid, each on the metastable continuation of its branch across
+  the saturation line, so neither has a kink inside a stencil; above the critical pressure the two
+  coincide. Nodes where a branch does not exist are marked invalid.
+- Saturation line as 1-D tables in θ = (1 − T/T_c)^(1/3), which keeps the critical-point
+  behaviour smooth. Inside the dome the equilibrium state is mixed exactly (HEM) from the
+  saturated states, its speed of sound from the analytic derivative of the mixture volume along
+  the isentrope.
+- Bicubic interpolation of ln T, ln ρ, h and ln w; (p, ρ) by Newton on s through the table.
+- Equilibrium and frozen modes from the same tables.
+- Falls back to the exact EOS wherever a stencil touches an invalid node, and in a band around
+  the critical point, so answers are always valid. Accuracy is measured against the exact EOS by
+  proptests (target ~1e-6 away from the critical band).
+- The tank's (u, v) state solve (4.5 µs for N₂, 57 µs for two-phase CO₂) is measured in the
+  thruster; it gets a table too only if real time needs it.
+
+### Delivery
+
+- 6a. `feature/m3-frozen-tabulated`: frozen vapour expansion, `TabulatedFluid`, real ports and
+  orifice transfers on any `RealFluid`.
+- 6b. `feature/m3-cold-gas-thruster`: `ControlKind::Choice`, the engine (tank with wall,
+  regulator, plenum, solenoid valve, nozzle), scene, CLI and GUI.
+
 ## Validation
 
 - **IF97**: official verification values for every region and the saturation line. Round trips
@@ -176,6 +227,7 @@ soon as the cold-gas thruster's real-time step is measured.
 4b. `feature/m3-reference-eos`: reference Helmholtz equations for N₂, Ar, He, CO₂; two-phase
    pure-fluid volumes (CO₂).
 5. `feature/m3-real-flow`: real-fluid isentropic flow, orifice, nozzle, HEM.
-6. `feature/m3-cold-gas-thruster`: engine #2.
+6a. `feature/m3-frozen-tabulated`: frozen vapour expansion, tabulated real fluid.
+6b. `feature/m3-cold-gas-thruster`: engine #2.
 7. `feature/m3-water-rocket`: engine #3.
 8. `feature/m3-aeolipile`: engine #1.
