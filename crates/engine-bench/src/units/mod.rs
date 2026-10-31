@@ -128,6 +128,7 @@ pub(crate) fn quantity_name(kind: QuantityKind) -> &'static str {
         QuantityKind::Force => "force",
         QuantityKind::Velocity => "velocity",
         QuantityKind::AngularVelocity => "angular_velocity",
+        QuantityKind::HeatTransferCoefficient => "heat_transfer_coefficient",
     }
 }
 
@@ -253,6 +254,11 @@ mod tests {
         close(si(K::Volume, "L", 1.0)?, 1e-3, 1e-15)?;
         close(si(K::Energy, "BTU", 1.0)?, 1_055.055_852_62, 1e-12)?;
         close(si(K::Velocity, "mph", 60.0)?, 26.8224, 1e-12)?;
+        close(
+            si(K::HeatTransferCoefficient, "BTU/(h·ft²·°F)", 1.0)?,
+            5.678_263_340_8,
+            1e-9,
+        )?;
         close(si(K::Ratio, "%", 50.0)?, 0.5, 1e-15)
     }
 
@@ -330,6 +336,10 @@ mod tests {
         anyhow::ensure!(
             quantity_name(QuantityKind::MassFlow) == "mass_flow",
             "mass_flow"
+        );
+        anyhow::ensure!(
+            quantity_name(QuantityKind::HeatTransferCoefficient) == "heat_transfer_coefficient",
+            "heat_transfer_coefficient"
         );
         Ok(())
     }

@@ -11,13 +11,29 @@ use crate::{
 
 /// Tanks are drawn as squares whose area is proportional to their volume.
 const DEPTH: f64 = 0.1;
+/// Flows below this fraction of [`ARROW_REFERENCE_FLOW`] are not drawn.
+const NEGLIGIBLE_FLOW: f64 = 1e-3;
 /// Mass flow drawn as a full-length arrow, kg/s.
 const ARROW_REFERENCE_FLOW: f64 = 0.02;
 
 /// Draws the demo for `sample` (laid out as in `channel`) into `scene`.
 pub(crate) fn draw(sample: &[f64], scene: &mut Scene) -> anyhow::Result<()> {
     // Same order as `channel`.
-    let &[p_a, p_b, t_a, t_b, _m_a, _m_b, mass_flow, v_a, v_b, valve] = sample else {
+    let &[
+        p_a,
+        p_b,
+        t_a,
+        t_b,
+        _m_a,
+        _m_b,
+        mass_flow,
+        _q_a,
+        _q_b,
+        v_a,
+        v_b,
+        valve,
+    ] = sample
+    else {
         return Err(CoreError::SampleLength {
             expected: channel::COUNT,
             actual: sample.len(),
@@ -74,7 +90,9 @@ pub(crate) fn draw(sample: &[f64], scene: &mut Scene) -> anyhow::Result<()> {
     };
     scene.label(Point::new(0.0, pipe + 2.0 * w), valve_label);
 
-    if mass_flow != 0.0 {
+    // Near equilibrium the flow is numerically zero with a random sign; drawing
+    // it would show a stray arrowhead.
+    if mass_flow.abs() > NEGLIGIBLE_FLOW * ARROW_REFERENCE_FLOW {
         let half = 0.5 * 0.8 * gap * (mass_flow.abs() / ARROW_REFERENCE_FLOW).min(1.0);
         let y = pipe + 4.0 * w;
         let sign = mass_flow.signum();
@@ -207,6 +225,17 @@ mod tests {
         );
         draw(&demo_sample(0.0), &mut scene)?;
         anyhow::ensure!(arrows(&scene).is_empty(), "arrow without flow");
+        Ok(())
+    }
+
+    #[test]
+    fn test_draw_hides_arrow_for_negligible_flow() -> anyhow::Result<()> {
+        // At equilibrium the flow is numerically zero with either sign.
+        let mut scene = Scene::new();
+        for flow in [2e-11, -2e-11] {
+            draw(&demo_sample(flow), &mut scene)?;
+            anyhow::ensure!(arrows(&scene).is_empty(), "arrow for {flow} kg/s");
+        }
         Ok(())
     }
 

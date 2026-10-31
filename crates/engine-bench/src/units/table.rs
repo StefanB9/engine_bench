@@ -80,7 +80,7 @@ const ENERGY: [DisplayUnit; 5] = [
     unit("kJ", 1e-3),
     unit("MJ", 1e-6),
     unit("kWh", 1.0 / 3.6e6),
-    unit("BTU", 1.0 / 1_055.055_852_62),
+    unit("BTU", 1.0 / BTU),
 ];
 const POWER: [DisplayUnit; 4] = [
     unit("W", 1.0),
@@ -105,6 +105,14 @@ const ANGULAR_VELOCITY: [DisplayUnit; 3] = [
     unit("deg/s", 180.0 / std::f64::consts::PI),
 ];
 
+/// International BTU, J.
+const BTU: f64 = 1_055.055_852_62;
+const HEAT_TRANSFER_COEFFICIENT: [DisplayUnit; 2] = [
+    unit("W/(m²·K)", 1.0),
+    // 1 BTU/(h·ft²·°F) = BTU / (3600 s · ft² · 5/9 K).
+    unit("BTU/(h·ft²·°F)", 3600.0 * FOOT * FOOT * (5.0 / 9.0) / BTU),
+];
+
 /// Units for `kind`, SI first.
 pub(crate) fn units(kind: QuantityKind) -> &'static [DisplayUnit] {
     match kind {
@@ -122,17 +130,46 @@ pub(crate) fn units(kind: QuantityKind) -> &'static [DisplayUnit] {
         QuantityKind::Force => &FORCE,
         QuantityKind::Velocity => &VELOCITY,
         QuantityKind::AngularVelocity => &ANGULAR_VELOCITY,
+        QuantityKind::HeatTransferCoefficient => &HEAT_TRANSFER_COEFFICIENT,
     }
 }
 
 /// Symbols chosen by the engineering preset, in `QuantityKind::ALL` order.
-const ENGINEERING: [&str; 14] = [
-    "%", "s", "mm", "cm²", "L", "kg", "kg/s", "bar", "°C", "kJ", "kW", "kN", "m/s", "rpm",
+const ENGINEERING: [&str; 15] = [
+    "%",
+    "s",
+    "mm",
+    "cm²",
+    "L",
+    "kg",
+    "kg/s",
+    "bar",
+    "°C",
+    "kJ",
+    "kW",
+    "kN",
+    "m/s",
+    "rpm",
+    "W/(m²·K)",
 ];
 
 /// Symbols chosen by the imperial preset, in `QuantityKind::ALL` order.
-const IMPERIAL: [&str; 14] = [
-    "%", "s", "in", "in²", "ft³", "lb", "lb/s", "psi", "°F", "BTU", "hp", "lbf", "ft/s", "rpm",
+const IMPERIAL: [&str; 15] = [
+    "%",
+    "s",
+    "in",
+    "in²",
+    "ft³",
+    "lb",
+    "lb/s",
+    "psi",
+    "°F",
+    "BTU",
+    "hp",
+    "lbf",
+    "ft/s",
+    "rpm",
+    "BTU/(h·ft²·°F)",
 ];
 
 /// Preset symbol for `kind`: `None` means SI.

@@ -27,7 +27,7 @@ pub(crate) use self::{
 };
 use self::{
     dynamics::Dynamics,
-    spec::{HEATER, PRESSURE_A, PRESSURE_B, RESET, VALVE},
+    spec::{HEATER, PRESSURE_A, PRESSURE_B, RESET, VALVE, WALL_HEAT_TRANSFER},
 };
 use crate::{
     CoreError,
@@ -42,7 +42,8 @@ const DESCRIPTOR: EngineDescriptor = EngineDescriptor {
     name: "Two-tank demo",
     catalogue_number: None,
     summary: "Compressed air flowing through a valve into a second tank with a heater.",
-    schema_version: 1,
+    // 2: heat flows into A and B (wall heat transfer).
+    schema_version: 2,
 };
 
 const VOLUME_A: f64 = 0.02;
@@ -60,7 +61,7 @@ const REAL_TIME_STEP: f64 = 1e-3;
 pub struct TwoTankDemo {
     a: Tank,
     b: Tank,
-    controls: [f64; 5],
+    controls: [f64; 6],
     time: f64,
 }
 
@@ -139,6 +140,7 @@ impl Engine for TwoTankDemo {
             b: &mut self.b,
             valve,
             heater: self.controls[HEATER],
+            wall_h: self.controls[WALL_HEAT_TRANSFER],
         };
         let mut y = dynamics.state();
         let mut t = 0.0;
@@ -190,6 +192,9 @@ impl Engine for TwoTankDemo {
         out[channel::M_A] = self.a.mass().get::<kilogram>();
         out[channel::M_B] = self.b.mass().get::<kilogram>();
         out[channel::MASS_FLOW] = mass_flow;
+        let h = self.controls[WALL_HEAT_TRANSFER];
+        out[channel::Q_A] = dynamics::wall_heat(&self.a, h, dynamics::wall_area(VOLUME_A));
+        out[channel::Q_B] = dynamics::wall_heat(&self.b, h, dynamics::wall_area(VOLUME_B));
         out[channel::V_A] = self.a.volume().get::<cubic_meter>();
         out[channel::V_B] = self.b.volume().get::<cubic_meter>();
         out[channel::VALVE] = self.controls[VALVE];
@@ -205,7 +210,7 @@ impl Engine for TwoTankDemo {
 
 /// Both tanks at the initial pressures in `controls` and the initial
 /// temperature.
-fn initial_tanks(controls: &[f64; 5]) -> anyhow::Result<(Tank, Tank)> {
+fn initial_tanks(controls: &[f64; 6]) -> anyhow::Result<(Tank, Tank)> {
     let tank = |p: f64, volume: f64| -> anyhow::Result<Tank> {
         ControlVolume::new(
             Mixture::dry_air()?,
@@ -312,6 +317,73 @@ mod tests {
             ((energy1 - energy0) / 3000.0 - 1.0).abs() < 1e-9,
             "ΔU {}",
             energy1 - energy0
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_two_tank_wall_heat_transfer_is_off_by_default() -> anyhow::Result<()> {
+        let mut demo = TwoTankDemo::new()?;
+        anyhow::ensure!(
+            demo.control_values()[WALL_HEAT_TRANSFER] == 0.0,
+            "default on"
+        );
+        demo.advance(seconds(5.0), &real_time())?;
+        let s = sample(&demo)?;
+        anyhow::ensure!(
+            s[channel::Q_A] == 0.0 && s[channel::Q_B] == 0.0,
+            "heat flows {s:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_two_tank_wall_heat_transfer_relaxes_to_ambient() -> anyhow::Result<()> {
+        let mut demo = TwoTankDemo::new()?;
+        demo.set_control(ControlId::new(VALVE), 1.0)?;
+        demo.set_control(ControlId::new(WALL_HEAT_TRANSFER), 20.0)?;
+        demo.advance(seconds(10.0), &real_time())?;
+        let early = sample(&demo)?;
+        // A has cooled by expansion and draws heat in; B is warmed by
+        // compression and loses it.
+        anyhow::ensure!(
+            early[channel::Q_A] > 0.0 && early[channel::Q_B] < 0.0,
+            "{early:?}"
+        );
+        demo.advance(seconds(600.0), &StepContext::offline(1e-9)?)?;
+        let s = sample(&demo)?;
+        for (name, t) in [("A", s[channel::T_A]), ("B", s[channel::T_B])] {
+            anyhow::ensure!((t - INITIAL_TEMPERATURE).abs() < 0.5, "T_{name} = {t} K");
+        }
+        // Same mass at the same temperature as at the start: p = Σ p0·V / ΣV =
+        // 3 bar.
+        for (name, p) in [("A", s[channel::P_A]), ("B", s[channel::P_B])] {
+            anyhow::ensure!((p / 3e5 - 1.0).abs() < 2e-3, "p_{name} = {p} Pa");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_two_tank_heater_balances_wall_loss() -> anyhow::Result<()> {
+        // Valve shut, 1 kW into B, h = 10 W/(m²·K) over a cube's 6·V^(2/3) of
+        // wall: steady state where h·A·(T − T_ambient) = 1 kW.
+        let mut demo = TwoTankDemo::new()?;
+        demo.set_control(ControlId::new(VALVE), 0.0)?;
+        demo.set_control(ControlId::new(HEATER), 1000.0)?;
+        demo.set_control(ControlId::new(WALL_HEAT_TRANSFER), 10.0)?;
+        demo.advance(seconds(3000.0), &StepContext::offline(1e-9)?)?;
+        let s = sample(&demo)?;
+        let wall = 6.0 * VOLUME_B.powf(2.0 / 3.0);
+        let expected = INITIAL_TEMPERATURE + 1000.0 / (10.0 * wall);
+        anyhow::ensure!(
+            (s[channel::T_B] - expected).abs() < 0.05,
+            "T_B {} vs {expected}",
+            s[channel::T_B]
+        );
+        anyhow::ensure!(
+            (s[channel::Q_B] + 1000.0).abs() < 0.5,
+            "q_B {}",
+            s[channel::Q_B]
         );
         Ok(())
     }

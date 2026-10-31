@@ -210,7 +210,7 @@ mod tests {
         h.run();
         h.get_by_label("Reset").click();
         h.run();
-        let reset = ControlId::new(4);
+        let reset = ControlId::new(5);
         anyhow::ensure!(
             h.state()
                 .commands
