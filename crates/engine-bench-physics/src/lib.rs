@@ -5,6 +5,7 @@
 //! models on top.
 
 pub mod error;
+pub mod flight;
 pub mod flow;
 pub mod gas;
 pub mod numerics;
