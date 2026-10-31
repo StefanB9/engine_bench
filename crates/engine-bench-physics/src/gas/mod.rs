@@ -6,6 +6,7 @@
 //! and enters the other, so mass and energy are conserved by construction.
 
 mod control_volume;
+pub mod eos;
 mod port;
 
 pub use control_volume::{ControlVolume, NEGATIVE_MASS_TOLERANCE};

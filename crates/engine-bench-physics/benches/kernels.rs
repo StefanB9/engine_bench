@@ -8,13 +8,13 @@ use std::{hint::black_box, io::Write as _};
 use criterion::{Criterion, criterion_group, criterion_main};
 use engine_bench_physics::{
     flow::{Nozzle, Orifice, PerfectGas, Reservoir},
-    gas::{ControlVolume, orifice_transfer},
+    gas::{ControlVolume, eos::PengRobinson, orifice_transfer},
     numerics::{
         ode::{AdaptiveOptions, DormandPrince45, NoEvents, OdeSystem, rk4_step},
         roots::{RootOptions, brent, newton_bracketed},
     },
     steam,
-    thermo::{Air3, Major7, Mixture, TemperaturePowers, gases},
+    thermo::{Air3, ColdGas, Major7, Mixture, TemperaturePowers, gases},
     units::{
         Area, Pressure, Ratio, SpecificHeatCapacity, ThermodynamicTemperature, Volume,
         area::square_meter, energy::joule, mass::kilogram, pressure::pascal, ratio::ratio,
@@ -171,6 +171,25 @@ fn gas(c: &mut Criterion) -> anyhow::Result<()> {
             // A slightly perturbed state, as between Runge–Kutta stages.
             a.set_conserved(black_box(&masses), black_box(energy * 1.000_001), 0.01);
             a.pressure()
+        });
+    });
+    // The same update for 200 bar of nitrogen through Peng-Robinson.
+    let mut n2 = ControlVolume::with_eos(
+        PengRobinson::new()?,
+        Mixture::<ColdGas, 4>::from_mass_fractions([1.0, 0.0, 0.0, 0.0])?,
+        Pressure::new::<pascal>(2e7),
+        ThermodynamicTemperature::new::<kelvin>(300.0),
+        Volume::new::<cubic_meter>(0.01),
+    )?;
+    let (n2_masses, n2_energy) = (*n2.species_masses(), n2.internal_energy().get::<joule>());
+    c.bench_function("control_volume/set_conserved_peng_robinson_n2", |bench| {
+        bench.iter(|| {
+            n2.set_conserved(
+                black_box(&n2_masses),
+                black_box(n2_energy * 1.000_001),
+                0.01,
+            );
+            n2.pressure()
         });
     });
     let orifice = Orifice::new(Area::new::<square_meter>(2e-5), 0.8)?;
