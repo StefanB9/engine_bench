@@ -1,0 +1,11 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 134c93400b4076e9c8911966b55e2b45d78f64cbd7351d98a61d23dde856f839 # shrinks to fluid = Helium, p0 = 2520410.6694801445, tr = 1.2, log_ratio = 2.5411885358564685
+cc 7ac0ed149da6e40f7957f04a8f4db0c24aafd51e1c00a8468621c6a5787af851 # shrinks to fluid = Helium, p0 = 2965094.2892426145, tr = 1.5993187647195504, log_ratio = 1.267660689378072
+cc 8e5c4f691380b69a3afc35479393140d267f80e4a6c180dbb75bf126cab37178 # shrinks to fluid = Helium, p0 = 2129834.0933872717, tr = 2.2706656955736815, log_ratio = 1.6240320605490404
+cc cc9965802ae11246f921cd64d39c3e87cf56364d62baf0ff4f0df88337be066d # shrinks to fluid = Nitrogen, pr = 1.9399567249219722, tr = 1.2, log_ratio = 0.0
+cc b2e924d3671562a20a281ebbedae7965ed7ea9fc168075132a676467330f99c5 # shrinks to fluid = Argon, pr = 1.8246932191515364, tr = 1.222664785871265, log_ratio = 0.4636569197780834

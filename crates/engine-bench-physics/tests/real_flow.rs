@@ -5,10 +5,10 @@
 
 use engine_bench_physics::{
     flow::{
-        Nozzle, Orifice,
+        Nozzle, Orifice, PerfectGas, Reservoir,
         real::{FlowState, RealFluid, Stagnation},
     },
-    fluid::PureFluid,
+    fluid::{FrozenVapour, PureFluid},
     steam::Water,
     units::{
         Area, Pressure, SpecificHeatCapacity, ThermodynamicTemperature, area::square_meter,
@@ -151,6 +151,54 @@ fn test_real_nozzle_thrust_is_continuous_across_regimes() -> anyhow::Result<()> 
     anyhow::ensure!(
         (below - above).abs() < 1e-4 * below,
         "jump at the design pressure"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_frozen_nitrogen_nozzle_expands_below_the_triple_point() -> anyhow::Result<()> {
+    // A vacuum cold-gas nozzle, area ratio 50, from 20 bar and 300 K: the
+    // exit is far below N2's 63.15 K triple point. Frozen vapour expands
+    // there; at 20 bar and 300 K N2 is within ~0.3 % of a perfect gas, so the
+    // thrust matches the γ = 1.4 nozzle closely.
+    let nozzle = Nozzle::new(
+        Area::new::<square_meter>(1e-6),
+        Area::new::<square_meter>(5e-5),
+    )?;
+    let fluid = FrozenVapour::new(PureFluid::Nitrogen);
+    let chamber = Stagnation::at_rest(&pure_at(PureFluid::Nitrogen, 2e6, 300.0)?);
+    let vacuum = Pressure::new::<pascal>(0.0);
+    let real = nozzle.real_operating_point(&fluid, &chamber, vacuum)?;
+    let exit_t = real.exit_temperature.get::<kelvin>();
+    anyhow::ensure!(exit_t < 63.0, "exit at {exit_t} K");
+    let air_like = PerfectGas::new(
+        1.4,
+        SpecificHeatCapacity::new::<joule_per_kilogram_kelvin>(8.314_462_618 / 0.028_013_4),
+    )?;
+    let reservoir = Reservoir::new(
+        Pressure::new::<pascal>(2e6),
+        ThermodynamicTemperature::new::<kelvin>(300.0),
+        air_like,
+    )?;
+    let ideal = nozzle.operating_point(&reservoir, vacuum)?;
+    close(
+        "thrust",
+        real.thrust.get::<newton>(),
+        ideal.thrust.get::<newton>(),
+        1e-2,
+    )?;
+    close(
+        "mass flow",
+        real.mass_flow.get::<kilogram_per_second>(),
+        ideal.mass_flow.get::<kilogram_per_second>(),
+        1e-2,
+    )?;
+    // Equilibrium (HEM) would have to condense here, and fails below the
+    // triple point.
+    let eq = nozzle.real_operating_point(&PureFluid::Nitrogen, &chamber, vacuum);
+    anyhow::ensure!(
+        eq.is_err(),
+        "equilibrium expansion below the triple point: {eq:?} vs {real:?}"
     );
     Ok(())
 }
