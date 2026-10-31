@@ -354,6 +354,11 @@ mod tests {
             let descriptor = id.descriptor();
             texts.extend([descriptor.name, descriptor.summary]);
             texts.extend(id.controls().iter().map(|c| c.label));
+            for control in id.controls() {
+                if let engine_bench_core::spec::ControlKind::Choice { options, .. } = control.kind {
+                    texts.extend(options.iter().map(|o| o.label));
+                }
+            }
             texts.extend(id.channels().iter().map(|c| c.label));
         }
         for kind in QuantityKind::ALL {

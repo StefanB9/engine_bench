@@ -6,7 +6,7 @@ use anyhow::Context;
 use engine_bench_core::{
     engine::EngineId,
     offline::{RunSettings, run, sweep},
-    spec::{ControlId, ControlKind, ControlSpec, QuantityKind, StepContext},
+    spec::{ControlId, ControlKind, ControlSpec, QuantityKind, StepContext, find_choice_option},
 };
 use engine_bench_physics::units::{Frequency, Time, frequency::hertz, time::second};
 use tracing::info;
@@ -72,14 +72,19 @@ fn describe_engine(engine: EngineId, out: &mut impl Write) -> anyhow::Result<()>
                 format!("on/off, default {}", if default { "on" } else { "off" })
             }
             ControlKind::Trigger => "trigger".to_owned(),
+            ControlKind::Choice { options, default } => {
+                let keys: Vec<&str> = options.iter().map(|o| o.key).collect();
+                let default = options.get(default).map_or("", |o| o.key);
+                format!("one of {}, default {default}", keys.join(", "))
+            }
         };
-        writeln!(out, "  {:<10} {:<34} {detail}", control.key, control.label)?;
+        writeln!(out, "  {:<15} {:<34} {detail}", control.key, control.label)?;
     }
     writeln!(out, "\nchannels (SI):")?;
     for channel in engine.channels() {
         writeln!(
             out,
-            "  {:<10} {:<34} {} {:?}",
+            "  {:<15} {:<34} {} {:?}",
             channel.key,
             channel.label,
             quantity_name(channel.quantity),
@@ -213,7 +218,8 @@ fn control(engine: EngineId, key: &str) -> anyhow::Result<(ControlId, &'static C
     Ok((ControlId::new(index), &controls[index]))
 }
 
-/// Parses a control value in the control's quantity: `on`/`off` for toggles.
+/// Parses a control value in the control's quantity: `on`/`off` for toggles,
+/// an option's key or label for choices.
 pub(crate) fn parse_control_value(spec: &ControlSpec, text: &str) -> anyhow::Result<f64> {
     match spec.kind {
         ControlKind::Continuous { quantity, .. } => parse_value(quantity, text),
@@ -223,6 +229,13 @@ pub(crate) fn parse_control_value(spec: &ControlSpec, text: &str) -> anyhow::Res
             _ => anyhow::bail!("expected on or off, got {text:?}"),
         },
         ControlKind::Trigger => Ok(1.0),
+        ControlKind::Choice { options, .. } => {
+            let index = find_choice_option(options, text).with_context(|| {
+                let keys: Vec<&str> = options.iter().map(|o| o.key).collect();
+                format!("expected one of {}, got {text:?}", keys.join(", "))
+            })?;
+            Ok(f64::from(u32::try_from(index)?))
+        }
     }
 }
 
@@ -369,6 +382,39 @@ mod tests {
             parse_control_value(&trigger, "now")?.to_bits() == 1.0f64.to_bits(),
             "trigger fires"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_control_value_reads_choice_keys_and_labels() -> anyhow::Result<()> {
+        use engine_bench_core::spec::ChoiceOption;
+
+        const OPTIONS: [ChoiceOption; 2] = [
+            ChoiceOption {
+                key: "n2",
+                label: "Nitrogen",
+            },
+            ChoiceOption {
+                key: "he",
+                label: "Helium",
+            },
+        ];
+        let choice = ControlSpec {
+            key: "propellant",
+            label: "Propellant",
+            kind: ControlKind::Choice {
+                options: &OPTIONS,
+                default: 0,
+            },
+        };
+        for (text, expected) in [("he", 1.0), ("N2", 0.0), ("helium", 1.0)] {
+            let value = parse_control_value(&choice, text)?;
+            anyhow::ensure!(value.to_bits() == f64::to_bits(expected), "{text}: {value}");
+        }
+        let Err(e) = parse_control_value(&choice, "xenon") else {
+            anyhow::bail!("accepted xenon");
+        };
+        anyhow::ensure!(format!("{e:#}").contains("n2, he"), "{e:#}");
         Ok(())
     }
 

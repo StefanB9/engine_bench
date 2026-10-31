@@ -217,6 +217,42 @@ the nozzle needs a model beyond equilibrium.
 - 6b. `feature/m3-cold-gas-thruster`: `ControlKind::Choice`, the engine (tank with wall,
   regulator, plenum, solenoid valve, nozzle), scene, CLI and GUI.
 
+### PR 6b: the thruster as built
+
+Propellants N₂, Ar and He (CO₂ waits for the condensation decision, see the frozen-vapour limits
+above). Flow path: tank → regulator → plenum → solenoid valve → valve outlet → nozzle → ambient.
+
+- **Volumes**: tank, plenum (100 cm³, line and manifold) and valve outlet (2 cm³, outlet passage
+  and nozzle inlet), each a reference-EOS `ControlVolume`. Orifice flows through
+  `real_orifice_transfer_in`; the nozzle from the valve outlet in frozen vapour, energy leaving at
+  the outlet's enthalpy. No backflow from the ambient (it is not propellant).
+- **Fluid properties**: a control, Tables (default) or Exact, in both modes (decided while
+  building: exact costs ~470 s of compute per simulated second, the tables agree to ~5e-6).
+- **Tank wall**: aluminium cylinder (length 3 × diameter) whose thickness carries the initial
+  pressure at a safety factor of 2 on 275 MPa yield; wall temperature is a state, with
+  convection inside and outside (coefficients are controls, the outside one 0 in space). The
+  plenum and valve-outlet gas exchange heat with their bodies at ambient temperature
+  (200 W/(m²·K)), no faster than a 1 ms relaxation (a drained outlet would otherwise be stiff
+  and, adiabatic, cool below the triple point).
+- **Regulator**: unbalanced poppet, m ẍ = p_set·A_d − k·x − p_out·A_d − (p_in − p_out)·A_s − c·ẋ
+  with stops at 0 and full lift: diaphragm 25 mm, seat 1 mm, k = 80 kN/m, 30 g, dashpot
+  200 N·s/m, full lift 0.5 mm, curtain area π·d_s·x. The dashpot keeps the pressure loop stable
+  (Routh, c·k > m·K) for every propellant at full tank pressure; lighter damping chattered at
+  ~380 Hz. Setpoint 0 holds it fully open (pure blowdown).
+- **Valve**: opens in 5 ms and closes in 3 ms (linear travel); open area 4 × the throat. Fire
+  mode off, continuous or pulsed (pulse width and period).
+- **Nozzle**: throat and exit diameters are controls (exit ≤ 10 mm); ambient pressure 0 to
+  1 atm. Below 1 kPa the nozzle flows against 1 kPa (the drained outlet keeps ~1e-8 kg instead
+  of expanding to ever lower exit pressures); thrust is corrected to the true ambient pressure.
+- **Numerics**: states scaled to order one (absolute tolerance for states starting at zero).
+  Real time is RK4 at 0.25 ms or a fifth of the valve outlet's filling time, whichever is
+  smaller (helium or a large valve make the outlet stiff), with the impulse integrated per step
+  and only the mass flow solved in the stages (`Nozzle::real_mass_flow`: no shock); offline is
+  Dormand–Prince with the impulse in the ODE.
+- **Measured** (release, tables): 2 s of nitrogen firing in vacuum takes 1.5 s, pulsed 1.3 s,
+  helium 0.5–0.7 s; a sea-level firing (shock in the nozzle) takes 2.5 s, 1.26 × slower than
+  real time: every step locates the shock. Offline, 5 s of firing takes 4.3 s.
+
 ## Validation
 
 - **IF97**: official verification values for every region and the saturation line. Round trips

@@ -37,10 +37,11 @@ pub(super) struct Envelope {
 }
 
 impl Envelope {
-    /// Cold-gas propulsion: vacuum nozzle exits to 500 bar tanks, from the
+    /// Cold-gas propulsion: vacuum nozzle exits (and a valve outlet draining
+    /// to vacuum) to 500 bar tanks, from the
     /// lowest liquid or frozen vapour up to 900 K.
     pub(super) const DEFAULT: Self = Self {
-        p_min: 10.0,
+        p_min: 0.1,
         p_max: 5e7,
         t_min: 0.0,
         t_max: 900.0,
@@ -99,7 +100,6 @@ pub(super) fn tables(fluid: PureFluid, envelope: &Envelope) -> anyhow::Result<Ta
             }
         }
     });
-    let vapour_end = rows.iter().map(|(v, _)| v.end).collect();
     let (vapour, liquid): (Vec<_>, Vec<_>) =
         rows.into_iter().map(|(v, l)| (v.nodes, l.nodes)).unzip();
     let critical = molar(data, data.data.rho_crit, data.data.t_crit);
@@ -107,7 +107,6 @@ pub(super) fn tables(fluid: PureFluid, envelope: &Envelope) -> anyhow::Result<Ta
     Ok(Tables {
         fluid,
         vapour: Grid2::from_rows(x, y, vapour),
-        vapour_end,
         liquid: Grid2::from_rows(x, y, liquid),
         saturation: SaturationTable::build(data).context("saturation table")?,
         dome: (p_triple, p_top),
@@ -137,16 +136,12 @@ fn axis(start: f64, end: f64, step: f64) -> Axis {
 #[derive(Debug, Clone, PartialEq)]
 struct Row {
     nodes: Vec<Node>,
-    /// Entropy, J/(kg·K), of the last state before the branch ended within
-    /// the row (its spinodal or trusted range), NaN if it did not.
-    end: f64,
 }
 
 impl Row {
     fn empty(y: Axis) -> Self {
         Self {
             nodes: vec![INVALID; y.len()],
-            end: f64::NAN,
         }
     }
 }
@@ -192,7 +187,6 @@ fn row(fluid: &Fluid, p: f64, y: Axis, branch: Branch) -> Row {
                 }
             }
             Err(end) if !filled.is_empty() => {
-                out.end = filled.last().map_or(f64::NAN, |&j| y.node(j));
                 if end == End::Spinodal {
                     for &j in filled.iter().rev().take(SPINODAL_GUARD) {
                         if let Some(slot) = out.nodes.get_mut(j) {

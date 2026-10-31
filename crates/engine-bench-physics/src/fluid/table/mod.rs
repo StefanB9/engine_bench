@@ -10,7 +10,8 @@
 //! - Equilibrium and frozen-vapour modes from the same tables.
 //! - Wherever a stencil touches an invalid node, leaves the tables, or the
 //!   phase is uncertain (the dome's ends), and near the critical point, the
-//!   exact equation answers.
+//!   exact equation answers. Only states the tables put clearly below the
+//!   triple point are refused outright (the exact equation refuses them too).
 
 mod branch;
 mod build;
@@ -64,9 +65,6 @@ pub(super) struct Tables {
     t_triple: f64,
     /// Critical temperature, K.
     t_crit: f64,
-    /// Per vapour row, the entropy where the vapour branch ends (NaN if it
-    /// does not end within the row), J/(kg·K).
-    vapour_end: Vec<f64>,
     /// A gas state for ideal-gas estimates: s J/(kg·K) at 300 K and 1 bar,
     /// cp J/(kg·K) there, and R J/(kg·K).
     reference: (f64, f64, f64),
@@ -125,7 +123,9 @@ impl TabulatedFluid {
         let t = self.tables;
         let below_triple_pressure = !self.frozen && p < t.dome.0;
         if let Some(state) = self.table_ps(p, s) {
-            if below_triple_pressure && raw_t(&state) < t.t_triple * (1.0 - 1e-6) {
+            // Well below the triple point (beyond the tables' error) the exact
+            // equation fails too: the fluid is solid.
+            if below_triple_pressure && raw_t(&state) < t.t_triple * (1.0 - 1e-4) {
                 return Lookup::Reject("colder than the triple point (solid)");
             }
             return if t.away_from_critical(&state) {
@@ -133,9 +133,6 @@ impl TabulatedFluid {
             } else {
                 Lookup::Exact
             };
-        }
-        if (self.frozen || below_triple_pressure) && t.past_vapour_end(p, s) {
-            return Lookup::Reject("no vapour state has this entropy");
         }
         Lookup::Exact
     }
@@ -246,19 +243,6 @@ impl RealFluid for TabulatedFluid {
 }
 
 impl Tables {
-    /// Whether (p, s) lies clearly beyond where the vapour branch ends: below
-    /// the end entropy of both neighbouring rows by two steps.
-    fn past_vapour_end(&self, p: f64, s: f64) -> bool {
-        let Some(i) = self.vapour.x.below(p.ln()) else {
-            return false;
-        };
-        let ends = (self.vapour_end.get(i), self.vapour_end.get(i + 1));
-        let (Some(&low), Some(&high)) = ends else {
-            return false;
-        };
-        low.is_finite() && high.is_finite() && s < low.min(high) - 2.0 * self.vapour.y.step()
-    }
-
     /// Entropy, J/(kg·K), of the ideal gas at `p` Pa and `rho` kg/m³: a start
     /// for solving (p, ρ) through the tables.
     fn gas_entropy(&self, p: f64, rho: f64) -> f64 {

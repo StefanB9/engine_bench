@@ -35,21 +35,6 @@ impl Axis {
         self.len
     }
 
-    pub(super) fn step(self) -> f64 {
-        self.step
-    }
-
-    /// The node at or below `x`, if on the axis.
-    pub(super) fn below(self, x: f64) -> Option<usize> {
-        let u = ((x - self.start) / self.step).floor();
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "u is checked to lie on the axis"
-        )]
-        (u >= 0.0 && u < (self.len - 1) as f64).then_some(u as usize)
-    }
-
     /// Coordinate of node `i`.
     pub(super) fn node(self, i: usize) -> f64 {
         (i as f64).mul_add(self.step, self.start)

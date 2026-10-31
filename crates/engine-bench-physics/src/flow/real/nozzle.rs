@@ -23,6 +23,40 @@ use crate::{
 };
 
 impl Nozzle {
+    /// The mass flow of [`real_operating_point`](Self::real_operating_point)
+    /// alone: once the throat chokes it does not depend on where a shock
+    /// stands, so no shock is solved.
+    pub fn real_mass_flow<F: RealFluid>(
+        &self,
+        fluid: &F,
+        chamber: &Stagnation,
+        back_pressure: Pressure,
+    ) -> anyhow::Result<MassRate> {
+        let pb = back_pressure.get::<pascal>();
+        if !(pb >= 0.0 && pb.is_finite()) {
+            return Err(PhysicsError::InvalidState(
+                "back pressure must be non-negative",
+            ))
+            .with_context(|| format!("p_b = {pb} Pa"));
+        }
+        let flow = MassRate::new::<kilogram_per_second>;
+        if pb >= chamber.p {
+            return Ok(flow(0.0));
+        }
+        let line = Isentrope {
+            fluid,
+            stagnation: *chamber,
+        };
+        let sonic = line.choked().context("nozzle throat")?;
+        let subsonic =
+            line.with_flux(sonic.g / self.expansion_ratio(), &sonic, Branch::Subsonic)?;
+        Ok(if pb > subsonic.state.p() {
+            flow(self.exit_area * line.at(pb)?.g)
+        } else {
+            flow(self.throat_area * sonic.g)
+        })
+    }
+
     /// Steady operating point for `fluid` from `chamber` into `back_pressure`
     /// (≥ 0; 0 is vacuum).
     pub fn real_operating_point<F: RealFluid>(
@@ -239,6 +273,19 @@ mod tests {
             prop_assert!(close(real.thrust.get::<newton>(), perfect.thrust.get::<newton>(), 1e-6), "F {:?} vs {:?}", real.thrust, perfect.thrust);
             prop_assert!(close(real.exit_pressure.get::<pascal>(), perfect.exit_pressure.get::<pascal>(), 1e-6));
             prop_assert!(close(real.exit_mach, perfect.exit_mach, 1e-6), "M {} vs {}", real.exit_mach, perfect.exit_mach);
+        }
+
+        /// The mass flow alone is the operating point's, in every regime.
+        #[test]
+        fn test_real_nozzle_mass_flow_equals_the_operating_points(epsilon in 1.0f64..12.0, ratio in 0.0f64..1.05) {
+            let gas = air().map_err(|e| fail(&e))?;
+            let nozzle = Nozzle::new(Area::new::<square_meter>(1e-4), Area::new::<square_meter>(epsilon * 1e-4)).map_err(|e| fail(&e))?;
+            let chamber = Stagnation::at_rest(&state(&gas, 2e6, 900.0).map_err(|e| fail(&e))?);
+            let pb = Pressure::new::<pascal>(ratio * 2e6);
+            let point = nozzle.real_operating_point(&gas, &chamber, pb).map_err(|e| fail(&e))?;
+            let flow = nozzle.real_mass_flow(&gas, &chamber, pb).map_err(|e| fail(&e))?;
+            let (a, b) = (flow.get::<kilogram_per_second>(), point.mass_flow.get::<kilogram_per_second>());
+            prop_assert!((a - b).abs() <= 1e-12 * b.max(1e-9), "{} vs {}", a, b);
         }
     }
 }

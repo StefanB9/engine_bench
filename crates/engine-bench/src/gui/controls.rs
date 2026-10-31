@@ -2,7 +2,7 @@
 //! tests can drive them without a simulation.
 
 use eframe::egui::{self, Slider, Ui};
-use engine_bench_core::spec::{ControlId, ControlKind, ControlSpec, QuantityKind};
+use engine_bench_core::spec::{ControlId, ControlKind, ControlSpec, QuantityKind, choice_index};
 
 use super::simulator::{Command, Snapshot};
 use crate::units::{Preset, UnitSelection, quantity_name, units};
@@ -53,6 +53,23 @@ pub(crate) fn engine_controls(
             ControlKind::Trigger => {
                 if ui.button(spec.label).clicked() {
                     commands.push(Command::SetControl(id, 1.0));
+                }
+            }
+            ControlKind::Choice { options, default } => {
+                let current = choice_index(value, options.len()).unwrap_or(default);
+                let mut selected = current;
+                let shown = options.get(current).map_or("", |o| o.label);
+                egui::ComboBox::from_label(spec.label)
+                    .selected_text(shown)
+                    .show_ui(ui, |ui| {
+                        for (i, option) in options.iter().enumerate() {
+                            ui.selectable_value(&mut selected, i, option.label);
+                        }
+                    });
+                if selected != current
+                    && let Ok(index) = u32::try_from(selected)
+                {
+                    commands.push(Command::SetControl(id, f64::from(index)));
                 }
             }
         }
