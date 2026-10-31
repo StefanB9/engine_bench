@@ -41,7 +41,11 @@ engine_bench/                          (workspace root)
     │       │                          dome), real orifice and nozzle points, real-gas shocks
     │       ├── fluid/                 Reference Helmholtz EOS for N2, Ar, He, CO2 (CoolProp data,
     │       │                          NASA reference state): properties(p, T), saturation(T),
-    │       │                          state_from_uv with the two-phase dome; RealFluid (flow.rs)
+    │       │                          state_from_uv with the two-phase dome; RealFluid (flow.rs);
+    │       │                          FrozenVapour (frozen.rs: supersaturated nozzle expansion)
+    │       │   └── table/             TabulatedFluid: vapour and liquid branch tables in
+    │       │                          (ln p, s), saturation table in θ = (1 − T/Tc)^(1/3), HEM;
+    │       │                          equilibrium or frozen; exact fallback; cached per fluid
     │       ├── steam/                 IAPWS-IF97 water/steam, all 5 regions: properties(p, T),
     │       │                          saturated(T), T(p, h), T(p, s), state_from_uv (two-phase
     │       │                          dome), SteamVolume, Water: RealFluid (flow.rs);
@@ -49,7 +53,8 @@ engine_bench/                          (workspace root)
     │       ├── units.rs               uom SI quantities for public APIs
     │       ├── gas/                   Lumped volumes: ControlVolume<S, N, E = IdealGas>,
     │       │                          Environment, GasPort, orifice_transfer (conservative);
-    │       │                          RealPort, real_orifice_transfer (real-fluid flow)
+    │       │                          RealPort, real_orifice_transfer(_in) (real-fluid flow,
+    │       │                          the volumes' own EOS or any RealFluid)
     │       │   └── eos/               EquationOfState: IdealGas, PengRobinson (mixtures, k_ij = 0),
     │       │                          Reference (one pure fluid, two-phase); flow states at (p, s)
     │       │                          and (p, ρ); EosFluid adapts any of them to RealFluid

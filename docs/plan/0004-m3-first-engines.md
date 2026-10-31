@@ -143,6 +143,21 @@ reference EOS: each (p, s) state nests a temperature Newton around a density sol
 Tuning the solves cannot close this gap, so the isentrope tabulation above is expected in PR 6, as
 soon as the cold-gas thruster's real-time step is measured.
 
+Measured after PR 6a (`TabulatedFluid`, same benches; nozzle points with N₂ frozen vapour):
+
+| Kernel | Exact | Tabulated |
+|--------|-------|-----------|
+| N₂ state at (p, s) | ~125 µs | ~120 ns |
+| Real orifice, N₂ at 20 MPa, choked | ~1.3 ms | ~1.5 µs |
+| Real nozzle, 10 bar plenum into vacuum, area ratio 50 or 100 | ms | ~11.5 µs |
+| Real nozzle, 20 MPa, under-expanded / shock in the nozzle | ~5.7 / ~57 ms | ~13 / ~130 µs |
+
+The tables meet the 20 µs budget except for a shock inside the nozzle (a sea-level firing),
+which takes about 130 µs: the shock position search evaluates the real Rankine–Hugoniot jump
+for every trial position. Measured accuracy against the exact equation, away from the critical
+band: T, ρ and h ≲ 5e-6, w ≲ 5e-5; frozen vapour deep in its metastable range near the spinodal
+T ≲ 2e-5, ρ ≲ 5e-5, w ≲ 5e-4.
+
 ## PR 6 design (decided at the start of PR 6)
 
 | Topic | Decision |
@@ -165,6 +180,14 @@ the nozzle needs a model beyond equilibrium.
   the Helmholtz equation: metastable inside the dome, and continued below the triple point (the
   ideal part is analytic there, the residual part small at nozzle densities). Beyond the vapour
   spinodal (no stable vapour root) it fails: spontaneous condensation would occur.
+- As built: below the triple point the extrapolated equation is trusted for nearly ideal vapour
+  only, |Z − 1| ≤ 0.1 down to half the triple temperature and ≤ 0.02 down to a fifth of it
+  (each equation's second virial coefficient is smooth to half the triple temperature; its
+  higher terms diverge below). N₂ from a 10 bar plenum reaches area ratio 100 in vacuum. CO₂
+  reaches far less: near-critical saturated vapour meets its spinodal within a few bar, and
+  superheated CO₂ from 20 bar meets the edge of the trusted range near 1.5 bar, where it would be
+  ~30 times supersaturated over the solid (snow). The thruster has to handle that (PR 6b), and
+  finite-rate condensation is the physical answer.
 - The thruster reports the supersaturation ratio p/p_sat at the nozzle exit (p_sat from the
   saturation line, extrapolated below the triple point as the sublimation line is not modelled).
 
