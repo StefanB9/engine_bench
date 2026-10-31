@@ -5,14 +5,16 @@ use std::io::Write;
 use anyhow::Context;
 use engine_bench_core::{
     engine::EngineId,
-    offline::{RunSettings, run, sweep},
+    offline::{RunSettings, run_with_progress, sweep_with_progress},
     spec::{ControlId, ControlKind, ControlSpec, QuantityKind, StepContext, find_choice_option},
 };
 use engine_bench_physics::units::{Frequency, Time, frequency::hertz, time::second};
+use indicatif::ProgressDrawTarget;
 use tracing::info;
 
 use crate::{
     cli::{Command, ExportArgs, RunArgs, SimulationArgs, SweepArgs},
+    progress::{RunBar, SweepBar},
     recording_io::{RecordingFile, Sweep, export_csv, read_parquet, write_parquet},
     units::{UnitSelection, format_value, parse_value, quantity_name, units},
 };
@@ -129,7 +131,10 @@ fn run_command(args: &RunArgs, out: &mut impl Write) -> anyhow::Result<()> {
         settings,
     } = simulation_setup(&args.simulation)?;
     info!(engine = engine.key(), rows = settings.rows(), "offline run");
-    let recording = run(engine, &controls, &settings)?;
+    let bar = RunBar::new(settings, ProgressDrawTarget::stderr())?;
+    let recording =
+        run_with_progress(engine, &controls, &settings, &bar).inspect_err(|_| bar.abandon())?;
+    bar.finish();
     let file = RecordingFile {
         runs: vec![recording],
         sweep: None,
@@ -153,7 +158,10 @@ fn sweep_command(args: &SweepArgs, out: &mut impl Write) -> anyhow::Result<()> {
     } = simulation_setup(&args.simulation)?;
     let (varied, values) = parse_vary(engine, &args.vary).context("--vary")?;
     info!(engine = engine.key(), runs = values.len(), "offline sweep");
-    let runs = sweep(engine, &controls, varied, &values, &settings)?;
+    let bar = SweepBar::new(values.len(), settings, ProgressDrawTarget::stderr())?;
+    let runs = sweep_with_progress(engine, &controls, varied, &values, &settings, &bar)
+        .inspect_err(|_| bar.abandon())?;
+    bar.finish();
     let control = engine.controls()[varied.index()].key.to_owned();
     let file = RecordingFile {
         runs,
@@ -506,7 +514,7 @@ mod tests {
             StepContext::offline(1e-8)?,
         )?;
         let (valve, _) = parse_setting(DEMO, "valve=0.5")?;
-        let expected = run(DEMO, &[(valve, 0.5)], &settings)?;
+        let expected = engine_bench_core::offline::run(DEMO, &[(valve, 0.5)], &settings)?;
         anyhow::ensure!(
             file.runs == [expected] && file.sweep.is_none(),
             "recording differs"
