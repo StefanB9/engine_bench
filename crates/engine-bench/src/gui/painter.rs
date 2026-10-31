@@ -176,9 +176,11 @@ pub(crate) fn to_shapes(
                 let (tail, head) = (transform.to_screen(from), transform.to_screen(to));
                 let line = EguiStroke::new(2.0, visuals.text_color());
                 shapes.push(Shape::line_segment([tail, head], line));
-                let back = (tail - head).normalized() * HEAD_LENGTH;
+                // A head longer than half the arrow would dwarf short vectors.
+                let head_length = HEAD_LENGTH.min(0.5 * (head - tail).length());
+                let back = (tail - head).normalized();
                 for angle in [HEAD_ANGLE, -HEAD_ANGLE] {
-                    let barb = Vec2::angled(back.angle() + angle) * HEAD_LENGTH;
+                    let barb = Vec2::angled(back.angle() + angle) * head_length;
                     shapes.push(Shape::line_segment([head, head + barb], line));
                 }
             }
@@ -302,6 +304,41 @@ mod tests {
             _ => None,
         });
         anyhow::ensure!(label.as_deref() == Some("8.000 bar"), "label {label:?}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_short_arrow_keeps_its_head_inside() -> anyhow::Result<()> {
+        // A 4 px arrow must not sprout fixed-size 10 px barbs.
+        let mut scene = Scene::new();
+        scene.arrow(Point::new(0.0, 0.0), Point::new(0.004, 0.0));
+        let view = ViewTransform::fit(
+            (Point::new(-1.0, -1.0), Point::new(1.0, 1.0)),
+            rect(2000.0, 2000.0),
+            0.0,
+        );
+        let units = UnitSelection::new(Preset::Si);
+        let ctx = Context::default();
+        let mut shapes = Vec::new();
+        let mut output = ctx.run_pass(egui::RawInput::default(), |ctx| {
+            let painter =
+                egui::Painter::new(ctx.clone(), LayerId::background(), rect(2000.0, 2000.0));
+            shapes = to_shapes(&scene, &view, &units, &painter);
+        });
+        output.textures_delta.clear();
+        let lengths: Vec<f32> = shapes
+            .iter()
+            .filter_map(|s| match s {
+                Shape::LineSegment { points, .. } => Some(points[0].distance(points[1])),
+                _ => None,
+            })
+            .collect();
+        let shaft = lengths.first().copied().unwrap_or_default();
+        anyhow::ensure!((shaft - 4.0).abs() < 0.01, "shaft {shaft}");
+        anyhow::ensure!(
+            lengths[1..].iter().all(|barb| *barb <= 0.5 * shaft + 1e-3),
+            "{lengths:?}"
+        );
         Ok(())
     }
 

@@ -6,11 +6,12 @@ pub(super) const VALVE: usize = 0;
 pub(super) const PRESSURE_A: usize = 1;
 pub(super) const PRESSURE_B: usize = 2;
 pub(super) const HEATER: usize = 3;
-pub(super) const RESET: usize = 4;
+pub(super) const WALL_HEAT_TRANSFER: usize = 4;
+pub(super) const RESET: usize = 5;
 
 /// Initial-pressure limits keep tank A, which cools as it expands, above the
 /// 200 K floor of the gas data for every setting (worst case ≈ 213 K).
-pub(crate) const CONTROLS: [ControlSpec; 5] = [
+pub(crate) const CONTROLS: [ControlSpec; 6] = [
     ControlSpec {
         key: "valve",
         label: "Valve opening",
@@ -51,6 +52,18 @@ pub(crate) const CONTROLS: [ControlSpec; 5] = [
             default: 0.0,
         },
     },
+    // Natural convection to still air is roughly 5 to 25 W/(m²·K); 0 keeps the
+    // tanks perfectly insulated.
+    ControlSpec {
+        key: "wall_h",
+        label: "Wall heat transfer coefficient",
+        kind: ControlKind::Continuous {
+            quantity: QuantityKind::HeatTransferCoefficient,
+            min: 0.0,
+            max: 100.0,
+            default: 0.0,
+        },
+    },
     ControlSpec {
         key: "reset",
         label: "Reset",
@@ -67,10 +80,12 @@ pub(crate) mod channel {
     pub(crate) const M_A: usize = 4;
     pub(crate) const M_B: usize = 5;
     pub(crate) const MASS_FLOW: usize = 6;
-    pub(crate) const V_A: usize = 7;
-    pub(crate) const V_B: usize = 8;
-    pub(crate) const VALVE: usize = 9;
-    pub(crate) const COUNT: usize = 10;
+    pub(crate) const Q_A: usize = 7;
+    pub(crate) const Q_B: usize = 8;
+    pub(crate) const V_A: usize = 9;
+    pub(crate) const V_B: usize = 10;
+    pub(crate) const VALVE: usize = 11;
+    pub(crate) const COUNT: usize = 12;
 }
 
 const fn observable(key: &'static str, label: &'static str, quantity: QuantityKind) -> ChannelSpec {
@@ -103,6 +118,8 @@ pub(crate) const CHANNELS: [ChannelSpec; channel::COUNT] = [
     observable("m_a", "Mass A", QuantityKind::Mass),
     observable("m_b", "Mass B", QuantityKind::Mass),
     observable("mdot", "Mass flow A to B", QuantityKind::MassFlow),
+    observable("q_a", "Heat into A", QuantityKind::Power),
+    observable("q_b", "Heat into B", QuantityKind::Power),
     scene_state("v_a", "Volume A", QuantityKind::Volume),
     scene_state("v_b", "Volume B", QuantityKind::Volume),
     scene_state("valve", "Valve opening", QuantityKind::Ratio),
