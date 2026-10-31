@@ -8,7 +8,7 @@ use engine_bench_physics::{
         Nozzle, Orifice, PerfectGas, Reservoir,
         real::{FlowState, RealFluid, Stagnation},
     },
-    fluid::{FrozenVapour, PureFluid},
+    fluid::{FrozenVapour, PureFluid, TabulatedFluid},
     steam::Water,
     units::{
         Area, Pressure, SpecificHeatCapacity, ThermodynamicTemperature, area::square_meter,
@@ -201,4 +201,101 @@ fn test_frozen_nitrogen_nozzle_expands_below_the_triple_point() -> anyhow::Resul
         "equilibrium expansion below the triple point: {eq:?} vs {real:?}"
     );
     Ok(())
+}
+
+#[test]
+fn test_tabulated_fluids_give_the_exact_flows() -> anyhow::Result<()> {
+    // Choked flux and a frozen vacuum nozzle through the tables against the
+    // exact equations (the tables agree with them to ~1e-6).
+    let orifice = Orifice::new(Area::new::<square_meter>(1e-6), 1.0)?;
+    let nozzle = Nozzle::new(
+        Area::new::<square_meter>(1e-6),
+        Area::new::<square_meter>(2.5e-5),
+    )?;
+    let vacuum = Pressure::new::<pascal>(0.0);
+    for fluid in [PureFluid::Nitrogen, PureFluid::CarbonDioxide] {
+        let (equilibrium, frozen) = (
+            TabulatedFluid::equilibrium(fluid)?,
+            TabulatedFluid::frozen(fluid)?,
+        );
+        let start = match fluid {
+            PureFluid::CarbonDioxide => {
+                let t = ThermodynamicTemperature::new::<kelvin>(290.0);
+                let sat = fluid.saturation(t)?;
+                fluid.state_prho(sat.pressure, sat.vapour_density)?
+            }
+            _ => pure_at(fluid, 2e7, 300.0)?,
+        };
+        let chamber = Stagnation::at_rest(&start);
+        let exact = orifice
+            .real_mass_flow(&fluid, &chamber, vacuum)?
+            .get::<kilogram_per_second>();
+        let table = orifice
+            .real_mass_flow(&equilibrium, &chamber, vacuum)?
+            .get::<kilogram_per_second>();
+        close(&format!("{fluid:?} choked flux"), table, exact, 2e-6)?;
+        // Saturated CO2 vapour this close to the critical point reaches the
+        // vapour spinodal within the nozzle; a superheated chamber does not.
+        let hot = Stagnation::at_rest(&match fluid {
+            PureFluid::CarbonDioxide => pure_at(fluid, 2e6, 320.0)?,
+            _ => start,
+        });
+        // CO2 stays within the frozen vapour's range only for a modest
+        // expansion (deeper, it is far supersaturated over the solid).
+        let nozzle = match fluid {
+            PureFluid::CarbonDioxide => Nozzle::new(
+                Area::new::<square_meter>(1e-6),
+                Area::new::<square_meter>(2e-6),
+            )?,
+            _ => nozzle,
+        };
+        let exact = nozzle.real_operating_point(&FrozenVapour::new(fluid), &hot, vacuum)?;
+        let table = nozzle.real_operating_point(&frozen, &hot, vacuum)?;
+        close(
+            &format!("{fluid:?} frozen thrust"),
+            table.thrust.get::<newton>(),
+            exact.thrust.get::<newton>(),
+            1e-5,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn test_frozen_nitrogen_reaches_area_ratio_100_in_vacuum() -> anyhow::Result<()> {
+    // From a 10 bar, 290 K plenum the exit of an area-ratio-100 vacuum nozzle
+    // is below half N2's triple temperature, at a few hundred Pa: so dilute
+    // that N2 is nearly a perfect gas there.
+    let nozzle = Nozzle::new(
+        Area::new::<square_meter>(1e-6),
+        Area::new::<square_meter>(1e-4),
+    )?;
+    let chamber = Stagnation::at_rest(&pure_at(PureFluid::Nitrogen, 1e6, 290.0)?);
+    let vacuum = Pressure::new::<pascal>(0.0);
+    let real =
+        nozzle.real_operating_point(&FrozenVapour::new(PureFluid::Nitrogen), &chamber, vacuum)?;
+    let exit_t = real.exit_temperature.get::<kelvin>();
+    anyhow::ensure!(exit_t < 31.6, "exit at {exit_t} K");
+    let gas = PerfectGas::new(
+        1.4,
+        SpecificHeatCapacity::new::<joule_per_kilogram_kelvin>(8.314_462_618 / 0.028_013_4),
+    )?;
+    let reservoir = Reservoir::new(
+        Pressure::new::<pascal>(1e6),
+        ThermodynamicTemperature::new::<kelvin>(290.0),
+        gas,
+    )?;
+    let ideal = nozzle.operating_point(&reservoir, vacuum)?;
+    close(
+        "exit temperature",
+        exit_t,
+        ideal.exit_temperature.get::<kelvin>(),
+        1e-2,
+    )?;
+    close(
+        "thrust",
+        real.thrust.get::<newton>(),
+        ideal.thrust.get::<newton>(),
+        5e-3,
+    )
 }
