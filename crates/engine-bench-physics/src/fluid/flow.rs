@@ -111,6 +111,13 @@ impl RealFluid for PureFluid {
         // can have other roots there, so the search starts at the edge.
         let lo = dome_edge(fluid, rho)?.unwrap_or(fluid.data.t_triple);
         let hi = fluid.data.t_max;
+        // A saturated phase sits on the edge itself, where the pressure can
+        // overshoot by round-off (in ρ, amplified by ∂p/∂ρ for a liquid): the
+        // edge is then the answer.
+        let edge = molar(fluid, rho, lo);
+        if edge.p >= p && edge.p - p <= (1e-9 * p).max(1e-12 * rho * edge.dp_drho) {
+            return Ok(single_phase(fluid, &edge, rho, lo));
+        }
         let t = newton_bracketed(
             |t| {
                 let x = molar(fluid, rho, t);
@@ -237,6 +244,27 @@ mod tests {
             Just(PureFluid::Helium),
             Just(PureFluid::CarbonDioxide),
         ]
+    }
+
+    #[test]
+    fn test_pure_fluid_state_prho_accepts_saturated_phases() -> anyhow::Result<()> {
+        // On the saturation line the search's lower end, the dome's edge, can
+        // overshoot the pressure by round-off.
+        for fluid in PureFluid::ALL {
+            let data = fluid.data().data;
+            for i in 1..200 {
+                let t = data.t_triple + (data.t_crit - data.t_triple) * f64::from(i) / 201.0;
+                let sat = fluid.saturation(ThermodynamicTemperature::new::<kelvin>(t))?;
+                for rho in [sat.vapour_density, sat.liquid_density] {
+                    let state = fluid
+                        .state_prho(sat.pressure, rho)
+                        .with_context(|| format!("{fluid:?} at {t} K, {rho:?}"))?;
+                    let got = state.temperature.get::<kelvin>();
+                    anyhow::ensure!((got / t - 1.0).abs() < 1e-8, "{fluid:?}: {got} K vs {t} K");
+                }
+            }
+        }
+        Ok(())
     }
 
     #[test]
