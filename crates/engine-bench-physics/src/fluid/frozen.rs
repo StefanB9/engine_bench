@@ -6,8 +6,9 @@
 //! droplets can nucleate; this is that frozen limit. The ideal part of the
 //! equation is analytic at any temperature and the residual part is small at
 //! the low densities of such states. Below the triple point the equation is
-//! extrapolated: down to half the triple temperature, and only for nearly ideal
-//! vapour (|Z − 1| ≤ 0.1), where its smooth second-virial term dominates.
+//! extrapolated, only for nearly ideal vapour where its second-virial term
+//! dominates: |Z − 1| ≤ 0.1 down to half the triple temperature, and dilute
+//! vapour, |Z − 1| ≤ 0.02, down to a fifth of it (a vacuum nozzle's exit).
 //! Beyond the vapour spinodal no vapour state exists (spontaneous
 //! condensation) and the solvers fail.
 
@@ -32,11 +33,18 @@ use crate::{
 
 /// Frozen vapour reaches down to this fraction of the triple temperature:
 /// each equation's second virial coefficient stays smooth that far.
-const LOWEST_FRACTION_OF_TRIPLE: f64 = 0.5;
+const LOWEST_FRACTION_OF_TRIPLE: f64 = 0.2;
 /// Below the triple point the vapour must stay this close to ideal, |Z − 1|,
-/// so that the smooth second-virial term dominates the extrapolated residual
-/// part (the higher terms diverge there).
+/// so that the second-virial term dominates the extrapolated residual part
+/// (the higher terms diverge there): down to half the triple temperature,
+/// where each equation's second virial coefficient is still smooth, ...
 const MAX_NON_IDEALITY: f64 = 0.1;
+/// ... and below that, where only dilute vapour (a vacuum nozzle's exit)
+/// is trusted, its residual part a small correction whatever its
+/// extrapolation.
+const MAX_NON_IDEALITY_COLD: f64 = 0.02;
+/// Where the colder limit starts, as a fraction of the triple temperature.
+const COLD_FRACTION_OF_TRIPLE: f64 = 0.5;
 /// Density growth factor while bracketing the vapour root: small enough not
 /// to step over the unstable part of a van der Waals loop.
 const GROWTH: f64 = 1.1;
@@ -163,7 +171,7 @@ impl RealFluid for FrozenVapour {
 }
 
 /// Lowest temperature of frozen vapour, K.
-fn lowest(fluid: &Fluid) -> f64 {
+pub(super) fn lowest(fluid: &Fluid) -> f64 {
     LOWEST_FRACTION_OF_TRIPLE * fluid.data.t_triple
 }
 
@@ -188,8 +196,16 @@ fn on_vapour_branch(fluid: &Fluid, rho: f64, t: f64, x: &Molar) -> bool {
 
 /// Whether the extrapolated equation holds at `rho` mol/m³, `t` K and `p` Pa.
 fn trusted(fluid: &Fluid, rho: f64, t: f64, p: f64) -> bool {
-    t >= fluid.data.t_triple
-        || (p / (rho * fluid.data.gas_constant * t) - 1.0).abs() <= MAX_NON_IDEALITY
+    let t_triple = fluid.data.t_triple;
+    if t >= t_triple {
+        return true;
+    }
+    let limit = if t >= COLD_FRACTION_OF_TRIPLE * t_triple {
+        MAX_NON_IDEALITY
+    } else {
+        MAX_NON_IDEALITY_COLD
+    };
+    (p / (rho * fluid.data.gas_constant * t) - 1.0).abs() <= limit
 }
 
 /// Densest vapour searched at `t` K, mol/m³: under the critical temperature
@@ -208,7 +224,35 @@ fn vapour_ceiling(fluid: &Fluid, t: f64) -> f64 {
 /// root is bracketed by growing the density from a stable vapour state while
 /// the slope stays positive (and, below the critical temperature, keeps
 /// falling).
-fn vapour_density(fluid: &Fluid, p: f64, t: f64) -> anyhow::Result<f64> {
+pub(super) fn vapour_density(fluid: &Fluid, p: f64, t: f64) -> anyhow::Result<f64> {
+    vapour_root(fluid, p, t).map_err(|end| {
+        PhysicsError::InvalidState(match end {
+            NoVapour::Spinodal => "beyond the vapour spinodal",
+            NoVapour::Untrusted => "outside the trusted vapour range",
+        })
+        .into()
+    })
+}
+
+/// Why no vapour state exists at some (p, T).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NoVapour {
+    /// Past the vapour spinodal: the vapour would condense spontaneously.
+    Spinodal,
+    /// Outside the range the equation is trusted in (below the triple point),
+    /// or outside its pressure range.
+    Untrusted,
+}
+
+/// [`vapour_density`] with the reason when there is none.
+pub(super) fn vapour_root(fluid: &Fluid, p: f64, t: f64) -> Result<f64, NoVapour> {
+    // Below the triple point a failing slope test is the extrapolation
+    // breaking down, not a spinodal.
+    let spinodal = if t < fluid.data.t_triple {
+        NoVapour::Untrusted
+    } else {
+        NoVapour::Spinodal
+    };
     let ceiling = vapour_ceiling(fluid, t);
     let f = |rho: f64| molar(fluid, rho, t);
     // Under T_c every density below saturated vapour's is stable vapour;
@@ -226,22 +270,24 @@ fn vapour_density(fluid: &Fluid, p: f64, t: f64) -> anyhow::Result<f64> {
     let mut slope = f64::INFINITY;
     loop {
         let x = f(hi);
-        if x.dp_drho <= 0.0 || (subcritical && x.dp_drho > slope) {
-            return Err(PhysicsError::InvalidState("beyond the vapour spinodal").into());
+        // At low density the slope is flat to round-off (∂p/∂ρ → RT).
+        if x.dp_drho <= 0.0 || (subcritical && x.dp_drho > slope * (1.0 + 1e-9)) {
+            return Err(spinodal);
         }
         slope = x.dp_drho;
         if x.p >= p {
             break;
         }
-        if hi >= ceiling || !trusted(fluid, hi, t, x.p) {
-            return Err(PhysicsError::InvalidState(
-                "beyond the vapour spinodal or the trusted vapour range",
-            )
-            .into());
+        if !trusted(fluid, hi, t, x.p) {
+            return Err(NoVapour::Untrusted);
+        }
+        if hi >= ceiling {
+            return Err(spinodal);
         }
         lo = hi;
         hi = (hi * GROWTH).min(ceiling);
     }
+    let options = RootOptions::new(1e-14 * hi, 200).map_err(|_| NoVapour::Untrusted)?;
     let rho = newton_bracketed(
         |rho| {
             if rho <= 0.0 {
@@ -253,10 +299,11 @@ fn vapour_density(fluid: &Fluid, p: f64, t: f64) -> anyhow::Result<f64> {
         lo,
         hi,
         hi,
-        RootOptions::new(1e-14 * hi, 200)?,
-    )?;
+        options,
+    )
+    .map_err(|_| NoVapour::Untrusted)?;
     if !trusted(fluid, rho, t, p) {
-        return Err(PhysicsError::InvalidState("outside the trusted vapour range").into());
+        return Err(NoVapour::Untrusted);
     }
     Ok(rho)
 }
@@ -376,6 +423,19 @@ mod tests {
         let r = 8.314_462_618 / 0.028_013_4;
         let z = 2e3 / (state.density.get::<kilogram_per_cubic_meter>() * r * t);
         anyhow::ensure!((z - 1.0).abs() < 0.01, "Z = {z}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_frozen_co2_expands_below_its_triple_point_at_low_density() -> anyhow::Result<()> {
+        // From 20 bar and 320 K to 1.5 bar: ~170 K, below the 216.6 K triple
+        // point; the vapour is dilute (Z ≈ 0.95), its ∂p/∂ρ flat to
+        // round-off at the start of the bracket.
+        let fluid = PureFluid::CarbonDioxide;
+        let start = fluid.properties(pa(2e6), ThermodynamicTemperature::new::<kelvin>(320.0))?;
+        let state = FrozenVapour::new(fluid).state_ps(pa(1.5e5), start.entropy)?;
+        let t = state.temperature.get::<kelvin>();
+        anyhow::ensure!(t < 216.0 && t > 150.0, "T = {t} K");
         Ok(())
     }
 
