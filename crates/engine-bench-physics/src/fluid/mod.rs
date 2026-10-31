@@ -193,6 +193,38 @@ impl PureFluid {
         Ok(self.properties_from(&helmholtz::molar(fluid, rho / m, t), t, rho))
     }
 
+    /// Vapour pressure at temperature `t`: the saturation pressure from the
+    /// triple point to 0.01 % below the critical temperature, and below the
+    /// triple point the liquid line extrapolated by Clausius–Clapeyron (ln p
+    /// linear in 1/T, slope of the triple point). The solid is not modelled,
+    /// so below the triple point this is the pressure over supercooled
+    /// liquid, the reference for a frozen vapour's supersaturation.
+    pub fn vapour_pressure(self, t: ThermodynamicTemperature) -> anyhow::Result<Pressure> {
+        let fluid = self.data();
+        let t = t.get::<kelvin>();
+        let t_triple = fluid.data.t_triple;
+        if t >= t_triple {
+            return Ok(self
+                .saturation(ThermodynamicTemperature::new::<kelvin>(t))?
+                .pressure);
+        }
+        if t.is_nan() || t <= 0.0 {
+            return Err(PhysicsError::TemperatureOutOfRange {
+                temperature: t,
+                min: 0.0,
+                max: t_triple,
+            })
+            .with_context(|| format!("{self:?} vapour pressure"));
+        }
+        let t_next = t_triple * (1.0 + 1e-4);
+        let (p_triple, _, _) = saturation::saturation_si(fluid, t_triple)?;
+        let (p_next, _, _) = saturation::saturation_si(fluid, t_next)?;
+        let slope = (p_next.ln() - p_triple.ln()) / (1.0 / t_next - 1.0 / t_triple);
+        Ok(Pressure::new::<pascal>(
+            (p_triple.ln() + slope * (1.0 / t - 1.0 / t_triple)).exp(),
+        ))
+    }
+
     /// Saturated liquid and vapour at temperature `t`, from the triple point to
     /// 0.01 % below the critical temperature.
     pub fn saturation(self, t: ThermodynamicTemperature) -> anyhow::Result<Saturation> {
@@ -265,6 +297,48 @@ impl PureFluid {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_vapour_pressure_follows_the_saturation_line() -> anyhow::Result<()> {
+        for fluid in PureFluid::ALL {
+            let data = fluid.data().data;
+            for fraction in [0.0, 0.3, 0.9] {
+                let t = ThermodynamicTemperature::new::<kelvin>(
+                    data.t_triple + fraction * (data.t_crit - data.t_triple),
+                );
+                let (got, want) = (fluid.vapour_pressure(t)?, fluid.saturation(t)?.pressure);
+                anyhow::ensure!(got == want, "{fluid:?} {t:?}: {got:?} vs {want:?}");
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_vapour_pressure_extrapolates_below_the_triple_point() -> anyhow::Result<()> {
+        // Clausius–Clapeyron from the triple point: continuous there, falling
+        // with temperature, ln p linear in 1/T.
+        let n2 = PureFluid::Nitrogen;
+        let t_triple = n2.data().data.t_triple;
+        let at = |t: f64| -> anyhow::Result<f64> {
+            Ok(n2
+                .vapour_pressure(ThermodynamicTemperature::new::<kelvin>(t))?
+                .get::<pascal>())
+        };
+        let (just_below, triple) = (at(t_triple * (1.0 - 1e-9))?, at(t_triple)?);
+        anyhow::ensure!(
+            (just_below / triple - 1.0).abs() < 1e-6,
+            "{just_below} vs {triple}"
+        );
+        let (a, b, c) = (at(50.0)?, at(40.0)?, at(30.0)?);
+        anyhow::ensure!(a > b && b > c && c > 0.0, "{a}, {b}, {c}");
+        let slope = |x: f64, y: f64, tx: f64, ty: f64| (x.ln() - y.ln()) / (1.0 / tx - 1.0 / ty);
+        let (s1, s2) = (slope(a, b, 50.0, 40.0), slope(b, c, 40.0, 30.0));
+        anyhow::ensure!((s1 / s2 - 1.0).abs() < 1e-9, "{s1} vs {s2}");
+        // No vapour pressure above the critical point.
+        let hot = ThermodynamicTemperature::new::<kelvin>(200.0);
+        anyhow::ensure!(n2.vapour_pressure(hot).is_err(), "200 K");
+        Ok(())
+    }
 
     #[test]
     #[expect(
