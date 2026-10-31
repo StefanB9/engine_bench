@@ -27,11 +27,11 @@ const STANDARD_GRAVITY: f64 = 9.806_65;
 
 /// Back-pressure ratios within this distance (relative to chamber pressure) of
 /// a regime boundary are reported as the boundary regime.
-const BOUNDARY_TOLERANCE: f64 = 1e-9;
+pub(crate) const BOUNDARY_TOLERANCE: f64 = 1e-9;
 
 /// Summerfield criterion: an over-expanded jet separates from the wall once the
 /// exit pressure drops below this fraction of the back pressure.
-const SEPARATION_PRESSURE_RATIO: f64 = 0.4;
+pub(crate) const SEPARATION_PRESSURE_RATIO: f64 = 0.4;
 
 /// Flow regime set by the back pressure.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,9 +60,9 @@ pub enum NozzleRegime {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Nozzle {
     /// m².
-    throat_area: f64,
+    pub(crate) throat_area: f64,
     /// m².
-    exit_area: f64,
+    pub(crate) exit_area: f64,
 }
 
 /// Steady flow through a nozzle for given chamber and back pressure.
@@ -195,7 +195,7 @@ impl Nozzle {
         })
     }
 
-    fn no_flow(p0: f64, t0: f64) -> NozzleOperatingPoint {
+    pub(crate) fn no_flow(p0: f64, t0: f64) -> NozzleOperatingPoint {
         NozzleOperatingPoint {
             regime: NozzleRegime::NoFlow,
             mass_flow: MassRate::new::<kilogram_per_second>(0.0),

@@ -11,7 +11,7 @@ engine_bench/                          (workspace root)
 ├── Cargo.toml                         [workspace] manifest — all dependency versions here
 ├── clippy.toml                        doc-valid-idents (proper names, units)
 ├── docs/plan/                         Approved plans
-├── tools/reference/                   Offline scripts: IF97 tables, reference EOS, CoolProp goldens
+├── tools/reference/                   Offline scripts: IF97 tables, reference EOS, CoolProp goldens (EOS, real flow)
 │
 └── crates/
     ├── engine-bench-physics/          (library — units, thermo, chemistry, numerics, solvers)
@@ -22,6 +22,7 @@ engine_bench/                          (workspace root)
     │   ├── tests/control_volume.rs    Integration: coupled volumes, conservation, blowdown
     │   ├── tests/flight.rs            Integration: ballistics, terminal velocity, stability, wind
     │   ├── tests/peng_robinson.rs     Integration: PR compressibility vs CoolProp, measured accuracy
+    │   ├── tests/real_flow.rs         Integration: real-fluid choked flux vs CoolProp, thrust continuity
     │   ├── tests/reference_fluids.rs  Integration: reference EOS vs CoolProp (single phase, saturation)
     │   ├── tests/steam.rs             Integration: IF97 vs CoolProp goldens, region consistency
     │   └── src/
@@ -29,23 +30,29 @@ engine_bench/                          (workspace root)
     │       ├── error.rs               PhysicsError (thiserror), carried inside anyhow::Error
     │       ├── flight/                Planar flight: ISA atmosphere (−500 m–20 km), 3-DOF rigid
     │       │                          body, aero loads (wind, pitch and jet damping), Barrowman
-    │       ├── flow/                  Perfect-gas compressible flow (γ frozen upstream)
+    │       ├── flow/                  Compressible flow: perfect gas (γ frozen upstream) and real
+    │       │                          fluids
     │       │   ├── isentropic.rs      Ratios vs Mach, A/A*, M(A/A*), Prandtl–Meyer
     │       │   ├── shock.rs           Normal-shock relations
     │       │   ├── orifice.rs         Reservoir, Orifice: bidirectional, choked, C¹ near Δp = 0
-    │       │   └── nozzle/            Nozzle operating point: every quasi-1D regime, thrust, Isp
+    │       │   ├── nozzle/            Nozzle operating point: every quasi-1D regime, thrust, Isp
+    │       │   └── real/              RealFluid (state at (p, s) and (p, ρ)), FlowState, Stagnation:
+    │       │                          isentropes G = ρ√(2(h0 − h)), choking at u = w (HEM in the
+    │       │                          dome), real orifice and nozzle points, real-gas shocks
     │       ├── fluid/                 Reference Helmholtz EOS for N2, Ar, He, CO2 (CoolProp data,
     │       │                          NASA reference state): properties(p, T), saturation(T),
-    │       │                          state_from_uv with the two-phase dome
+    │       │                          state_from_uv with the two-phase dome; RealFluid (flow.rs)
     │       ├── steam/                 IAPWS-IF97 water/steam, all 5 regions: properties(p, T),
     │       │                          saturated(T), T(p, h), T(p, s), state_from_uv (two-phase
-    │       │                          dome), SteamVolume; coefficients/ generated from
-    │       │                          CoolProp/IF97 (MIT)
+    │       │                          dome), SteamVolume, Water: RealFluid (flow.rs);
+    │       │                          coefficients/ generated from CoolProp/IF97 (MIT)
     │       ├── units.rs               uom SI quantities for public APIs
     │       ├── gas/                   Lumped volumes: ControlVolume<S, N, E = IdealGas>,
-    │       │                          Environment, GasPort, orifice_transfer (conservative)
+    │       │                          Environment, GasPort, orifice_transfer (conservative);
+    │       │                          RealPort, real_orifice_transfer (real-fluid flow)
     │       │   └── eos/               EquationOfState: IdealGas, PengRobinson (mixtures, k_ij = 0),
-    │       │                          Reference (one pure fluid, two-phase)
+    │       │                          Reference (one pure fluid, two-phase); flow states at (p, s)
+    │       │                          and (p, ρ); EosFluid adapts any of them to RealFluid
     │       ├── numerics/
     │       │   ├── roots.rs           Brent, bracketed Newton
     │       │   └── ode/               OdeSystem, rk4_step, DormandPrince45 (dense output, events)

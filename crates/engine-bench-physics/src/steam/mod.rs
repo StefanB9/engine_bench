@@ -21,6 +21,7 @@ mod backward;
     reason = "generated tables reproduce the IF97 coefficients digit for digit"
 )]
 mod coefficients;
+mod flow;
 mod gibbs;
 mod helmholtz;
 mod inverse;
@@ -32,6 +33,7 @@ mod saturation;
 mod state;
 mod volume;
 
+pub use flow::Water;
 pub use inverse::{temperature_from_enthalpy, temperature_from_entropy};
 pub use properties::{Saturated, SteamProperties, properties, saturated};
 pub use region::{Region, region};

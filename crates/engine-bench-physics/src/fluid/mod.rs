@@ -13,6 +13,7 @@
     reason = "generated tables reproduce the published coefficients digit for digit"
 )]
 mod coefficients;
+mod flow;
 mod helmholtz;
 mod saturation;
 mod state;

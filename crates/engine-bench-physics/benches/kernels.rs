@@ -7,7 +7,10 @@ use std::{hint::black_box, io::Write as _};
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use engine_bench_physics::{
-    flow::{Nozzle, Orifice, PerfectGas, Reservoir},
+    flow::{
+        Nozzle, Orifice, PerfectGas, Reservoir,
+        real::{RealFluid, Stagnation},
+    },
     fluid::PureFluid,
     gas::{
         ControlVolume,
@@ -18,7 +21,7 @@ use engine_bench_physics::{
         ode::{AdaptiveOptions, DormandPrince45, NoEvents, OdeSystem, rk4_step},
         roots::{RootOptions, brent, newton_bracketed},
     },
-    steam,
+    steam::{self, Water},
     thermo::{Air3, ColdGas, Major7, Mixture, TemperaturePowers, gases},
     units::{
         Area, Pressure, Ratio, SpecificHeatCapacity, ThermodynamicTemperature, Volume,
@@ -310,6 +313,57 @@ fn steam_kernels(c: &mut Criterion) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Real-fluid orifice and nozzle points: each one a choke search along the
+/// isentrope (plan 0004 budget: under 20 µs).
+fn real_flow(c: &mut Criterion) -> anyhow::Result<()> {
+    let n2 = PureFluid::Nitrogen;
+    let props = n2.properties(
+        Pressure::new::<pascal>(2e7),
+        ThermodynamicTemperature::new::<kelvin>(300.0),
+    )?;
+    let start = n2.state_prho(props.pressure, props.density)?;
+    let nitrogen_s = start.entropy.get::<joule_per_kilogram_kelvin>();
+    let nitrogen = Stagnation::at_rest(&start);
+    let wet = Stagnation::at_rest(&Water.state_ps(
+        Pressure::new::<pascal>(1e6),
+        SpecificHeatCapacity::new::<joule_per_kilogram_kelvin>(6000.0),
+    )?);
+    let s0 = SpecificHeatCapacity::new::<joule_per_kilogram_kelvin>(nitrogen_s);
+    c.bench_function("real_state/reference_n2_ps", |b| {
+        b.iter(|| n2.state_ps(black_box(Pressure::new::<pascal>(1e7)), black_box(s0)));
+    });
+    c.bench_function("real_state/reference_n2_properties_pt", |b| {
+        b.iter(|| {
+            n2.properties(
+                black_box(Pressure::new::<pascal>(1e7)),
+                black_box(ThermodynamicTemperature::new::<kelvin>(250.0)),
+            )
+        });
+    });
+    let orifice = Orifice::new(Area::new::<square_meter>(1e-5), 0.8)?;
+    for (name, p_down) in [("unchoked", 1.8e7), ("choked", 1e5)] {
+        let p_down = Pressure::new::<pascal>(p_down);
+        c.bench_function(&format!("real_orifice/reference_n2_{name}"), |b| {
+            b.iter(|| orifice.real_mass_flow(&n2, black_box(&nitrogen), black_box(p_down)));
+        });
+    }
+    let p_down = Pressure::new::<pascal>(1e5);
+    c.bench_function("real_orifice/steam_wet_choked", |b| {
+        b.iter(|| orifice.real_mass_flow(&Water, black_box(&wet), black_box(p_down)));
+    });
+    let nozzle = Nozzle::new(
+        Area::new::<square_meter>(1e-5),
+        Area::new::<square_meter>(4e-5),
+    )?;
+    for (name, p_back) in [("under_expanded", 1e5), ("shock_in_nozzle", 1.2e7)] {
+        let p_back = Pressure::new::<pascal>(p_back);
+        c.bench_function(&format!("real_nozzle/reference_n2_{name}"), |b| {
+            b.iter(|| nozzle.real_operating_point(&n2, black_box(&nitrogen), black_box(p_back)));
+        });
+    }
+    Ok(())
+}
+
 fn flow_benches(c: &mut Criterion) {
     // Criterion offers no error channel; report a setup failure instead of
     // skipping silently.
@@ -318,6 +372,9 @@ fn flow_benches(c: &mut Criterion) {
     }
     if let Err(e) = gas(c) {
         let _ = writeln!(std::io::stderr(), "gas benchmarks skipped: {e:#}");
+    }
+    if let Err(e) = real_flow(c) {
+        let _ = writeln!(std::io::stderr(), "real-flow benchmarks skipped: {e:#}");
     }
     if let Err(e) = steam_kernels(c) {
         let _ = writeln!(std::io::stderr(), "steam benchmarks skipped: {e:#}");

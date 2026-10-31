@@ -127,6 +127,22 @@ Real-fluid nozzle evaluations involve root solves. Targets, measured by criterio
 If an engine's real-time step exceeds about 30 % of wall time, the plan is to tabulate isentropes
 per propellant at reset, without changing the API.
 
+Measured after PR 5 (criterion, `bench-unwind`, one point each):
+
+| Kernel | Time |
+|--------|------|
+| Reference N2 state at (p, s) | ~125 µs |
+| Real orifice, reference N2 at 20 MPa, unchoked / choked | ~1.6 ms / ~1.3 ms |
+| Real orifice, wet steam (IF97), choked | ~120 µs |
+| Real nozzle, reference N2, under-expanded | ~5.7 ms |
+| Real nozzle, reference N2, shock in the nozzle | ~70 ms |
+
+All points miss the 20 µs target by 6× (IF97) to more than 1000×. The cost is the
+reference EOS: each (p, s) state nests a temperature Newton around a density solve (~10 µs,
+~12 Helmholtz evaluations), and a choke search makes ~10 of them (a nozzle shock search ~400).
+Tuning the solves cannot close this gap, so the isentrope tabulation above is expected in PR 6, as
+soon as the cold-gas thruster's real-time step is measured.
+
 ## Validation
 
 - **IF97**: official verification values for every region and the saturation line. Round trips
