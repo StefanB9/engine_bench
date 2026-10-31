@@ -56,6 +56,15 @@ engine_bench/                          (workspace root)
         ├── tests/cli.rs               Integration: the real binary (list, run → export, errors)
         └── src/
             ├── main.rs                Entry point: subcommand, or GUI when none
+            ├── gui/                   eframe (wgpu) app: live simulation and animated replay
+            │   ├── app.rs             App: Live / Replay modes, panels, scene view, status
+            │   ├── simulator.rs       Simulator<C: Clock>: engine + pacer, Command in, Snapshot out
+            │   ├── sim_thread.rs      Thread + handle: mpsc commands, triple_buffer snapshot, rows
+            │   ├── controls.rs        Control sliders in display units, transport, unit picker
+            │   ├── plots.rs           egui_plot panels, one per quantity kind
+            │   ├── painter.rs         Scene → egui shapes, view fit, gas colormap
+            │   ├── history.rs         Bounded plot history
+            │   └── replay.rs          Replay cursor/playback over a RecordingFile
             ├── cli.rs                 clap: list, run, sweep, export
             ├── commands.rs            Subcommand implementations, KEY=VALUE / sweep parsing
             ├── recording_io.rs        Parquet read/write (polars) with engine metadata, CSV export
@@ -66,6 +75,8 @@ engine_bench/                          (workspace root)
 **Dependency boundary:** physics ← core ← engine-bench. Never reverse. Physics knows nothing about specific engines. Core has no binary-only dependencies (logging setup, CLI parsing, UI): engines describe what to draw as a renderer-agnostic `Scene`, and the binary renders it.
 
 **Scenes come from channels:** an engine's scene is drawn by `EngineId::draw(sample)` from its channel values only, never from engine internals. Everything a scene needs (geometry included) must be a channel (`ChannelRole::SceneState` if not worth plotting), so live view and replay of a recording run the same code. Bump `EngineDescriptor::schema_version` whenever an engine's channel list changes.
+
+**GUI text must be drawable:** egui's bundled fonts lack many symbols (e.g. `→`) and debug builds panic on a missing glyph. Engine names, summaries, control/channel labels and unit symbols are checked by `test_every_engine_and_unit_label_has_glyphs`; keep labels to Latin, Greek and common punctuation.
 
 **Units:** `uom` quantities (re-exported from `engine_bench_physics::units`) in all public APIs. Hot kernels unwrap to raw `f64` struct-of-arrays and re-wrap on output.
 
@@ -90,6 +101,7 @@ cargo clippy --workspace --all-targets        # Zero warnings required (includes
 cargo check --workspace --all-targets         # Type-check everything including tests
 cargo fmt --all -- --check                    # Format check
 cargo build -p engine-bench                   # Build the binary
+cargo run -p engine-bench                    # GUI (live simulation; Replay tab opens Parquet recordings)
 cargo run -p engine-bench -- list            # Engines; `list <engine>` shows controls and channels
 cargo run -p engine-bench -- run two-tank-demo --duration 10s --set valve=50% -o run.parquet
 cargo run -p engine-bench -- export run.parquet --csv run.csv --units engineering

@@ -60,6 +60,16 @@ impl UnitSelection {
         }
     }
 
+    /// The preset in use.
+    pub(crate) fn preset(&self) -> Preset {
+        self.preset
+    }
+
+    /// Switches to `preset`, dropping per-quantity overrides.
+    pub(crate) fn set_preset(&mut self, preset: Preset) {
+        *self = Self::new(preset);
+    }
+
     /// Uses the unit spelled `symbol` (or an ASCII alias) for `kind`.
     pub(crate) fn set_override(&mut self, kind: QuantityKind, symbol: &str) -> anyhow::Result<()> {
         let unit = find_unit(kind, symbol)?;
@@ -294,6 +304,12 @@ mod tests {
         anyhow::ensure!(
             units.set_override(QuantityKind::Pressure, "kg").is_err(),
             "wrong kind"
+        );
+        units.set_preset(Preset::Imperial);
+        anyhow::ensure!(units.preset() == Preset::Imperial, "preset");
+        anyhow::ensure!(
+            units.unit(QuantityKind::Pressure).symbol == "psi",
+            "overrides kept"
         );
         Ok(())
     }

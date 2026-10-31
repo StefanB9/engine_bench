@@ -6,13 +6,17 @@ edition = "2024"
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
+eframe = { workspace = true }
+egui_plot = { workspace = true }
 engine-bench-core = { version = "0.1.0", path = "../engine-bench-core" }
 engine-bench-physics = { version = "0.1.0", path = "../engine-bench-physics" }
 polars = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+triple_buffer = { workspace = true }
 
 [dev-dependencies]
+egui_kittest = { workspace = true }
 proptest = { workspace = true }
 
 [lints]
