@@ -29,6 +29,8 @@ anyhow = { version = "1.0.104", default-features = false, features = ["std"] }
 tracing = { version = "0.1.44", default-features = false, features = ["attributes", "std"] }
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt", "std"] }
 thiserror = { version = "2.0.21", default-features = false }
+clap = { version = "4.6.7", default-features = false, features = ["derive", "error-context", "help", "std", "usage"] }
+polars = { version = "0.55.2", default-features = false, features = ["csv", "parquet"] }
 uom = { version = "0.38.0", default-features = false, features = ["f64", "si", "std"] }
 
 # dev-only

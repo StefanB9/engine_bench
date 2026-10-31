@@ -20,7 +20,8 @@ pub(crate) fn setup_logging() {
     });
 
     tracing_subscriber::registry()
-        .with(fmt::layer())
+        // stderr, so command output on stdout stays clean for pipes and files.
+        .with(fmt::layer().with_writer(std::io::stderr))
         .with(filter)
         .init();
 }
