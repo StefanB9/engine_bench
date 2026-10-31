@@ -16,9 +16,10 @@ use engine_bench_physics::{
     steam,
     thermo::{Air3, Major7, Mixture, TemperaturePowers, gases},
     units::{
-        Area, Pressure, SpecificHeatCapacity, ThermodynamicTemperature, Volume, area::square_meter,
-        energy::joule, pressure::pascal, specific_heat_capacity::joule_per_kilogram_kelvin,
-        thermodynamic_temperature::kelvin, volume::cubic_meter,
+        Area, Pressure, Ratio, SpecificHeatCapacity, ThermodynamicTemperature, Volume,
+        area::square_meter, energy::joule, mass::kilogram, pressure::pascal, ratio::ratio,
+        specific_heat_capacity::joule_per_kilogram_kelvin, thermodynamic_temperature::kelvin,
+        volume::cubic_meter,
     },
 };
 
@@ -179,7 +180,12 @@ fn gas(c: &mut Criterion) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// IF97 forward equations (one per region) and the exact T(p, h) inverse.
+/// IF97 forward equations, the (u, v) state solve and the exact T(p, h)
+/// inverse.
+#[expect(
+    clippy::many_single_char_names,
+    reason = "thermodynamic symbols p, T, u, h, m"
+)]
 fn steam_kernels(c: &mut Criterion) -> anyhow::Result<()> {
     for (name, p, t) in [
         ("steam/properties_region1", 3e6, 300.0),
@@ -195,6 +201,40 @@ fn steam_kernels(c: &mut Criterion) -> anyhow::Result<()> {
             b.iter(|| steam::properties(black_box(p), black_box(t)));
         });
     }
+    let (p3, t3) = (
+        Pressure::new::<pascal>(25e6),
+        ThermodynamicTemperature::new::<kelvin>(650.0),
+    );
+    steam::properties(p3, t3)?;
+    c.bench_function("steam/properties_region3", |b| {
+        b.iter(|| steam::properties(black_box(p3), black_box(t3)));
+    });
+    // A boiler at 450 K, 30 % liquid by volume: the (u, v) solve from scratch,
+    // and the warm-started update a simulation step makes.
+    let mut boiler = steam::SteamVolume::saturated(
+        ThermodynamicTemperature::new::<kelvin>(450.0),
+        Ratio::new::<ratio>(0.3),
+        Volume::new::<cubic_meter>(1e-3),
+    )?;
+    let state = boiler.state();
+    c.bench_function("steam/state_from_uv_two_phase_cold", |b| {
+        b.iter(|| {
+            steam::state_from_uv(
+                black_box(state.internal_energy),
+                black_box(state.specific_volume),
+            )
+        });
+    });
+    let (m, u) = (
+        boiler.mass().get::<kilogram>(),
+        boiler.internal_energy().get::<joule>(),
+    );
+    c.bench_function("steam/volume_set_conserved_two_phase_warm", |b| {
+        b.iter(|| {
+            boiler.set_conserved(black_box(m), black_box(u * 1.000_001), 1e-3);
+            boiler.pressure()
+        });
+    });
     let p = Pressure::new::<pascal>(1e6);
     let h = steam::properties(p, ThermodynamicTemperature::new::<kelvin>(500.0))?.enthalpy;
     c.bench_function("steam/temperature_from_enthalpy_region2", |b| {

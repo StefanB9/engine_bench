@@ -32,9 +32,10 @@ engine_bench/                          (workspace root)
     │       │   ├── shock.rs           Normal-shock relations
     │       │   ├── orifice.rs         Reservoir, Orifice: bidirectional, choked, C¹ near Δp = 0
     │       │   └── nozzle/            Nozzle operating point: every quasi-1D regime, thrust, Isp
-    │       ├── steam/                 IAPWS-IF97 water/steam: regions 1, 2, 4, 5 (3 pending),
-    │       │                          region selection, T(p, h) and T(p, s) exact on the forward
-    │       │                          equations; coefficients/ generated from CoolProp/IF97 (MIT)
+    │       ├── steam/                 IAPWS-IF97 water/steam, all 5 regions: properties(p, T),
+    │       │                          saturated(T), T(p, h), T(p, s), state_from_uv (two-phase
+    │       │                          dome), SteamVolume; coefficients/ generated from
+    │       │                          CoolProp/IF97 (MIT)
     │       ├── units.rs               uom SI quantities for public APIs
     │       ├── gas/                   Lumped volumes: ControlVolume, Environment, GasPort,
     │       │                          orifice_transfer (conservative by construction)

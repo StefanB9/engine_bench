@@ -4,6 +4,8 @@
 //! error. Inside the two-phase dome the temperature is the saturation
 //! temperature.
 
+mod region3;
+
 use anyhow::Context;
 
 use super::{
@@ -25,7 +27,7 @@ use crate::{
 /// Temperature of water or steam at pressure `p` with specific enthalpy `h`.
 ///
 /// Returns the saturation temperature inside the two-phase dome. Fails outside
-/// IF97's range, and for now in region 3.
+/// IF97's range.
 pub fn temperature_from_enthalpy(
     p: Pressure,
     h: AvailableEnergy,
@@ -39,7 +41,7 @@ pub fn temperature_from_enthalpy(
 /// Temperature of water or steam at pressure `p` with specific entropy `s`.
 ///
 /// Returns the saturation temperature inside the two-phase dome. Fails outside
-/// IF97's range, and for now in region 3.
+/// IF97's range.
 pub fn temperature_from_entropy(
     p: Pressure,
     s: SpecificHeatCapacity,
@@ -145,10 +147,7 @@ fn temperature_si(p: f64, x: f64, given: Given) -> anyhow::Result<(f64, Region)>
         }
         let t_b23 = saturation::b23_temperature_si(p);
         if x < value(gibbs::region2, t_b23) {
-            return Err(PhysicsError::InvalidState(
-                "IF97 region 3 (near-critical) is not supported yet",
-            ))
-            .with_context(|| format!("{} {x} at {p} Pa", given.name()));
+            return region3::temperature(p, x, given, t_b23);
         }
         t_b23
     };
@@ -198,6 +197,13 @@ fn solve(
     };
     // A guess outside [lo, hi] (or NaN from a backward equation evaluated at
     // the edge of its range) is clamped or replaced by the midpoint.
+    let at = |t: f64| given.of(&kernel(p, t)) - x;
+    if at(lo) >= 0.0 {
+        return Ok((lo, region));
+    }
+    if at(hi) <= 0.0 {
+        return Ok((hi, region));
+    }
     let guess = if guess.is_finite() {
         guess
     } else {
@@ -225,6 +231,7 @@ mod tests {
     use crate::steam::{
         properties::properties_si,
         region::{region_si, validate_pt},
+        region3::saturated_si,
     };
 
     /// Forward then inverse at (p, T): returns (T back from h, T back from s,
@@ -285,12 +292,62 @@ mod tests {
     }
 
     #[test]
-    fn test_inverse_reports_region_3_and_out_of_range_inputs() -> anyhow::Result<()> {
+    fn test_inverse_solves_region_3_and_its_two_phase_part() -> anyhow::Result<()> {
         // h at 25 MPa between region 1 at 623.15 K and region 2 on B23.
-        let error = temperature_from_enthalpy_si(25e6, 2.0e6)
-            .err()
-            .context("region 3 accepted")?;
-        anyhow::ensure!(format!("{error:#}").contains("region 3"), "{error:#}");
+        let (t, region) = temperature_from_enthalpy_si(25e6, 2.0e6)?;
+        anyhow::ensure!(
+            region == Region::NearCritical && t > 623.15,
+            "{region:?}, {t} K"
+        );
+        // Inside the dome above 623.15 K (p_sat(640 K) ≈ 20.3 MPa).
+        let t_sat = 640.0;
+        let (p, liquid, vapour) = saturated_si(t_sat)?;
+        let (t, region) = temperature_from_enthalpy_si(p, f64::midpoint(liquid.h, vapour.h))?;
+        anyhow::ensure!(region == Region::Saturation, "{region:?}");
+        anyhow::ensure!((t - t_sat).abs() < 1e-9 * t_sat, "{t} K");
+        Ok(())
+    }
+
+    #[test]
+    fn test_inverse_stays_within_if97_consistency_on_the_b23_boundary() -> anyhow::Result<()> {
+        for p in [20e6, 50e6, 76.371e6, 100e6] {
+            let t_b23 = saturation::b23_temperature_si(p);
+            for t in [t_b23 - 0.05, t_b23 - 0.01, t_b23] {
+                let x = properties_si(region_si(p, t), p, t)?;
+                for (back, _) in [
+                    temperature_from_enthalpy_si(p, x.h)?,
+                    temperature_from_entropy_si(p, x.s)?,
+                ] {
+                    anyhow::ensure!((back - t).abs() < 0.1, "{p} Pa, {t} K → {back} K");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_inverse_stays_within_if97_consistency_at_1073_k() -> anyhow::Result<()> {
+        for p in [1e4, 1.028e6, 1e7, 5e7] {
+            for t in [
+                T_MAX_VAPOUR - 0.01,
+                T_MAX_VAPOUR,
+                T_MAX_VAPOUR + 0.005,
+                T_MAX_VAPOUR + 0.05,
+            ] {
+                let x = properties_si(region_si(p, t), p, t)?;
+                for (back, _) in [
+                    temperature_from_enthalpy_si(p, x.h)?,
+                    temperature_from_entropy_si(p, x.s)?,
+                ] {
+                    anyhow::ensure!((back - t).abs() < 0.1, "{p} Pa, {t} K → {back} K");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_inverse_rejects_out_of_range_inputs() -> anyhow::Result<()> {
         for (p, h) in [
             (1e6, -1e5),
             (1e6, 1e8),
@@ -328,6 +385,13 @@ mod tests {
         Ok(())
     }
 
+    fn region3_state() -> impl Strategy<Value = (f64, f64)> {
+        (623.15f64..863.15, 0.0f64..1.0).prop_map(|(t, fraction)| {
+            let lo = saturation::b23_pressure_si(t).max(16.53e6);
+            (lo + fraction * (100e6 - lo), t)
+        })
+    }
+
     fn single_phase_state() -> impl Strategy<Value = (f64, f64)> {
         // log-uniform pressure 700 Pa – 100 MPa, uniform temperature over IF97.
         (2.845f64..8.0, 273.15f64..2273.15).prop_map(|(log_p, t)| (10f64.powf(log_p), t))
@@ -338,10 +402,23 @@ mod tests {
 
         #[test]
         fn test_inverse_round_trips_every_supported_region((p, t) in single_phase_state()) {
-            prop_assume!(validate_pt(p, t).is_ok() && region_si(p, t) != Region::NearCritical);
+            // Regions 2 and 5 overlap slightly at 1073.15 K (checked separately).
+            prop_assume!(validate_pt(p, t).is_ok() && (t - T_MAX_VAPOUR).abs() > 0.1);
             let (t_h, t_s, region) = round_trip(p, t).map_err(|e| TestCaseError::fail(format!("{e:#}")))?;
             prop_assert!((t_h - t).abs() < 1e-8 * t, "{:?} {} Pa, {} K: T(p, h) = {}", region, p, t, t_h);
             prop_assert!((t_s - t).abs() < 1e-8 * t, "{:?} {} Pa, {} K: T(p, s) = {}", region, p, t, t_s);
+        }
+
+        #[test]
+        fn test_inverse_round_trips_region_3((p, t) in region3_state()) {
+            // Along B23 region 3's enthalpy is ~100 J/kg above region 2's, so
+            // (p, h) is ambiguous within a few hundredths of a kelvin of it;
+            // that band is checked against IF97's consistency instead.
+            prop_assume!(region_si(p, t) == Region::NearCritical);
+            prop_assume!(saturation::b23_temperature_si(p) - t > 0.1);
+            let (t_h, t_s, _) = round_trip(p, t).map_err(|e| TestCaseError::fail(format!("{e:#}")))?;
+            prop_assert!((t_h - t).abs() < 1e-8 * t, "{} Pa, {} K: T(p, h) = {}", p, t, t_h);
+            prop_assert!((t_s - t).abs() < 1e-8 * t, "{} Pa, {} K: T(p, s) = {}", p, t, t_s);
         }
     }
 }

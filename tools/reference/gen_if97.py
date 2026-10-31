@@ -86,3 +86,37 @@ bk = [HEADER, "//! Backward equations T(p, h) and T(p, s) for regions 1 and 2 (I
   ""]
 open(f"{out_dir}/backward.rs", "w").write("\n".join(bk))
 print("ok")
+
+# --- Region 3: Helmholtz terms, SR5-05 v(p, T) subregions and their boundary curves ---
+helm = table("Region3residdata")
+n1 = helm[0][2]
+r3 = [HEADER, "//! Region 3: Helmholtz free energy (IAPWS R7-97(2012) Table 30) and the backward",
+      "//! equations v(p, T) of IAPWS SR5-05(2016) with their subregion boundaries (Tables 2, 3, 4, 6–9).",
+      "", "use super::{Subregion, Term};", "",
+      f"/// n₁ of φ = n₁ ln δ + Σ nᵢ δ^Iᵢ τ^Jᵢ (Table 30).\npub(crate) const HELMHOLTZ_LN: f64 = {num(n1)};", "",
+      residual("HELMHOLTZ", "Terms 2 … 40 of φ = n₁ ln δ + Σ nᵢ δ^Iᵢ τ^Jᵢ (Table 30).", helm[1:]), ""]
+params = {}
+for m in re.finditer(r"Region3(\w)\(\) : Region3BackwardsRegion\(Region3\wdata, (\d+)\)\{\s*(.*?)\};", src, re.S):
+    letter, body = m.group(1), m.group(3)
+    kv = dict(re.findall(r"(\w+) = ([\d.]+)(?:\*p_fact)?", body))
+    params[letter.upper()] = kv
+subs = []
+for letter in "abcdefghijklmnopqrstuvwxyz":
+    L = letter.upper()
+    rows = table(f"Region3{L}data")
+    kv = params[L]
+    name = f"TERMS_3{L}"
+    r3 += [residual(name, f"Subregion 3{letter} (SR5-05 Tables 2 and 4–9).", rows), ""]
+    exp_form = L == "N"
+    c, d, e = (kv.get("c", "1"), kv.get("d", "1"), kv.get("e", "1"))
+    subs.append(f"    // 3{letter}\n    Subregion {{ v_star: {num(kv['v_star'])}, p_star: {num(float(kv['p_star'])*1e6)}, "
+                f"t_star: {num(kv['T_star'])}, a: {num(kv['a'])}, b: {num(kv['b'])}, c: {num(c)}, d: {num(d)}, "
+                f"e: {num(e)}, exponential: {'true' if exp_form else 'false'}, terms: &{name} }},")
+r3 += ["/// The 26 subregions 3a … 3z, in order.", f"pub(crate) const SUBREGIONS: [Subregion; 26] = ["] + subs + ["];", ""]
+for line in ["AB", "CD", "GH", "IJ", "JK", "MN", "OP", "QU", "RX", "UV", "WX"]:
+    rows = table(f"{line}data")
+    log_form = line in ("AB", "OP", "WX")
+    var = "ln π" if log_form else "π"
+    r3 += [ideal(f"LINE_{line}", f"Boundary {line[0].lower()}{line[1].lower()}: T = Σ nᵢ ({var})^Iᵢ K (SR5-05 Table 3).", rows), ""]
+open(f"{out_dir}/region3.rs", "w").write("\n".join(r3))
+print("region 3 ok", len(helm), sum(len(table(f'Region3{L}data')) for L in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'))
