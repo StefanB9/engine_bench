@@ -18,9 +18,12 @@ engine_bench/                          (workspace root)
     │   ├── benches/kernels.rs         criterion benchmarks of hot kernels (baseline, not a gate)
     │   ├── proptest-regressions/      Saved proptest failure seeds (committed, re-run first)
     │   ├── tests/control_volume.rs    Integration: coupled volumes, conservation, blowdown
+    │   ├── tests/flight.rs            Integration: ballistics, terminal velocity, stability, wind
     │   └── src/
     │       ├── lib.rs                 Module declarations
     │       ├── error.rs               PhysicsError (thiserror), carried inside anyhow::Error
+    │       ├── flight/                Planar flight: ISA atmosphere (−500 m–20 km), 3-DOF rigid
+    │       │                          body, aero loads (wind, pitch and jet damping), Barrowman
     │       ├── flow/                  Perfect-gas compressible flow (γ frozen upstream)
     │       │   ├── isentropic.rs      Ratios vs Mach, A/A*, M(A/A*), Prandtl–Meyer
     │       │   ├── shock.rs           Normal-shock relations
@@ -49,7 +52,8 @@ engine_bench/                          (workspace root)
     │       ├── spec/                  QuantityKind, ControlSpec, ChannelSpec (+ role), StepContext
     │       ├── engine/                Engine trait, EngineId (registry + draw), AnyEngine dispatch
     │       ├── engines/               Engine models: two_tank (demo) = model, spec, dynamics, draw
-    │       ├── scene.rs               Renderer-agnostic display list (world metres, semantic fills)
+    │       ├── scene.rs               Renderer-agnostic display list (world metres, semantic fills,
+    │       │                          optional view rectangle, else fit to bounds)
     │       └── recording.rs           Columnar SI time series; rows redraw scenes for replay
     │
     └── engine-bench/                  (binary)
