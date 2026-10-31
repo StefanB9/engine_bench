@@ -55,6 +55,16 @@ pub enum PhysicsError {
         /// Highest valid temperature, K.
         max: f64,
     },
+    /// A pressure left the range covered by an equation of state.
+    #[error("pressure {pressure} Pa outside the valid range {min}..{max} Pa")]
+    PressureOutOfRange {
+        /// Offending pressure, Pa.
+        pressure: f64,
+        /// Lowest valid pressure, Pa.
+        min: f64,
+        /// Highest valid pressure, Pa.
+        max: f64,
+    },
     /// A geometric parameter (area, length) is non-physical.
     #[error("invalid geometry: {0}")]
     InvalidGeometry(&'static str),
@@ -109,6 +119,14 @@ mod tests {
                     max: 6000.0,
                 },
                 "temperature 150.5 K outside the data range 200..6000 K",
+            ),
+            (
+                PhysicsError::PressureOutOfRange {
+                    pressure: 2e8,
+                    min: 0.0,
+                    max: 1e8,
+                },
+                "pressure 200000000 Pa outside the valid range 0..100000000 Pa",
             ),
             (
                 PhysicsError::InvalidGeometry("exit area below throat area"),
