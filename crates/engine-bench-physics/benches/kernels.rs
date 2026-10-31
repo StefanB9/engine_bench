@@ -13,6 +13,7 @@ use engine_bench_physics::{
         ode::{AdaptiveOptions, DormandPrince45, NoEvents, OdeSystem, rk4_step},
         roots::{RootOptions, brent, newton_bracketed},
     },
+    steam,
     thermo::{Air3, Major7, Mixture, TemperaturePowers, gases},
     units::{
         Area, Pressure, SpecificHeatCapacity, ThermodynamicTemperature, Volume, area::square_meter,
@@ -178,6 +179,30 @@ fn gas(c: &mut Criterion) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// IF97 forward equations (one per region) and the exact T(p, h) inverse.
+fn steam_kernels(c: &mut Criterion) -> anyhow::Result<()> {
+    for (name, p, t) in [
+        ("steam/properties_region1", 3e6, 300.0),
+        ("steam/properties_region2", 1e6, 500.0),
+        ("steam/properties_region5", 3e7, 1500.0),
+    ] {
+        let (p, t) = (
+            Pressure::new::<pascal>(p),
+            ThermodynamicTemperature::new::<kelvin>(t),
+        );
+        steam::properties(p, t)?;
+        c.bench_function(name, |b| {
+            b.iter(|| steam::properties(black_box(p), black_box(t)));
+        });
+    }
+    let p = Pressure::new::<pascal>(1e6);
+    let h = steam::properties(p, ThermodynamicTemperature::new::<kelvin>(500.0))?.enthalpy;
+    c.bench_function("steam/temperature_from_enthalpy_region2", |b| {
+        b.iter(|| steam::temperature_from_enthalpy(black_box(p), black_box(h)));
+    });
+    Ok(())
+}
+
 fn flow_benches(c: &mut Criterion) {
     // Criterion offers no error channel; report a setup failure instead of
     // skipping silently.
@@ -186,6 +211,9 @@ fn flow_benches(c: &mut Criterion) {
     }
     if let Err(e) = gas(c) {
         let _ = writeln!(std::io::stderr(), "gas benchmarks skipped: {e:#}");
+    }
+    if let Err(e) = steam_kernels(c) {
+        let _ = writeln!(std::io::stderr(), "steam benchmarks skipped: {e:#}");
     }
 }
 

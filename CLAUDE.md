@@ -9,7 +9,9 @@ Cargo workspace with 3 members:
 ```
 engine_bench/                          (workspace root)
 ├── Cargo.toml                         [workspace] manifest — all dependency versions here
+├── clippy.toml                        doc-valid-idents (proper names, units)
 ├── docs/plan/                         Approved plans
+├── tools/reference/                   Offline scripts: IF97 table transcription, CoolProp goldens
 │
 └── crates/
     ├── engine-bench-physics/          (library — units, thermo, chemistry, numerics, solvers)
@@ -19,6 +21,7 @@ engine_bench/                          (workspace root)
     │   ├── proptest-regressions/      Saved proptest failure seeds (committed, re-run first)
     │   ├── tests/control_volume.rs    Integration: coupled volumes, conservation, blowdown
     │   ├── tests/flight.rs            Integration: ballistics, terminal velocity, stability, wind
+    │   ├── tests/steam.rs             Integration: IF97 vs CoolProp goldens, region consistency
     │   └── src/
     │       ├── lib.rs                 Module declarations
     │       ├── error.rs               PhysicsError (thiserror), carried inside anyhow::Error
@@ -29,6 +32,9 @@ engine_bench/                          (workspace root)
     │       │   ├── shock.rs           Normal-shock relations
     │       │   ├── orifice.rs         Reservoir, Orifice: bidirectional, choked, C¹ near Δp = 0
     │       │   └── nozzle/            Nozzle operating point: every quasi-1D regime, thrust, Isp
+    │       ├── steam/                 IAPWS-IF97 water/steam: regions 1, 2, 4, 5 (3 pending),
+    │       │                          region selection, T(p, h) and T(p, s) exact on the forward
+    │       │                          equations; coefficients/ generated from CoolProp/IF97 (MIT)
     │       ├── units.rs               uom SI quantities for public APIs
     │       ├── gas/                   Lumped volumes: ControlVolume, Environment, GasPort,
     │       │                          orifice_transfer (conservative by construction)

@@ -9,6 +9,7 @@ pub mod flight;
 pub mod flow;
 pub mod gas;
 pub mod numerics;
+pub mod steam;
 pub mod thermo;
 pub mod units;
 
