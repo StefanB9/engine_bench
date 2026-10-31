@@ -20,7 +20,7 @@ mod species_set;
 pub use mixture::Mixture;
 pub use nasa9::TemperaturePowers;
 pub use species::{Element, Species};
-pub use species_set::{Air3, Major7, SpeciesSet};
+pub use species_set::{Air3, ColdGas, Major7, SpeciesSet};
 
 /// Lowest temperature, in kelvin, that temperature inversion will return; below
 /// the fit range cp is extrapolated as constant.
