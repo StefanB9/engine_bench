@@ -4,14 +4,17 @@
 
 use anyhow::Context;
 
-use super::{PureFluid, helmholtz::molar, saturation::dome_top, saturation_si};
+use super::{
+    PureFluid, helmholtz::molar, saturation::dome_top, saturation_si, transport::dilute_transport,
+};
 use crate::{
     PhysicsError,
-    flow::condensing::{Condensable, CondensationProperties},
+    flow::condensing::{Condensable, CondensationProperties, VapourTransport},
     units::{
-        AvailableEnergy, Mass, MassDensity, SurfaceTension, ThermodynamicTemperature,
-        available_energy::joule_per_kilogram, mass::kilogram,
-        mass_density::kilogram_per_cubic_meter, surface_tension::newton_per_meter,
+        AvailableEnergy, DynamicViscosity, Mass, MassDensity, SurfaceTension, ThermalConductivity,
+        ThermodynamicTemperature, available_energy::joule_per_kilogram,
+        dynamic_viscosity::pascal_second, mass::kilogram, mass_density::kilogram_per_cubic_meter,
+        surface_tension::newton_per_meter, thermal_conductivity::watt_per_meter_kelvin,
         thermodynamic_temperature::kelvin,
     },
 };
@@ -95,6 +98,19 @@ impl Condensable for PureFluid {
             liquid_density: MassDensity::new::<kilogram_per_cubic_meter>(liquid_density),
             latent_heat: AvailableEnergy::new::<joule_per_kilogram>(latent_heat),
             surface_tension: SurfaceTension::new::<newton_per_meter>(surface_tension(*self, t)),
+        })
+    }
+
+    fn vapour_transport(&self, t: ThermodynamicTemperature) -> anyhow::Result<VapourTransport> {
+        let kelvin_t = t.get::<kelvin>();
+        if !(kelvin_t > 0.0 && kelvin_t.is_finite()) {
+            return Err(PhysicsError::InvalidState("temperature must be positive"))
+                .with_context(|| format!("{self:?} vapour transport at {kelvin_t} K"));
+        }
+        let (mu, k) = dilute_transport(*self, kelvin_t);
+        Ok(VapourTransport {
+            viscosity: DynamicViscosity::new::<pascal_second>(mu),
+            thermal_conductivity: ThermalConductivity::new::<watt_per_meter_kelvin>(k),
         })
     }
 
@@ -321,6 +337,30 @@ mod tests {
             (m / (0.028_013_4 / 6.022_140_76e23) - 1.0).abs() < 1e-5,
             "{m}"
         );
+    }
+
+    #[test]
+    fn test_vapour_transport_wraps_the_dilute_correlations() -> anyhow::Result<()> {
+        use crate::units::{
+            dynamic_viscosity::pascal_second, thermal_conductivity::watt_per_meter_kelvin,
+        };
+        let x =
+            PureFluid::Nitrogen.vapour_transport(ThermodynamicTemperature::new::<kelvin>(300.0))?;
+        let (mu, k) = dilute_transport(PureFluid::Nitrogen, 300.0);
+        anyhow::ensure!(
+            (x.viscosity.get::<pascal_second>() - mu).abs() < 1e-18
+                && (x.thermal_conductivity.get::<watt_per_meter_kelvin>() - k).abs() < 1e-15,
+            "{x:?}"
+        );
+        for t in [0.0, -1.0, f64::NAN] {
+            anyhow::ensure!(
+                PureFluid::Argon
+                    .vapour_transport(ThermodynamicTemperature::new::<kelvin>(t))
+                    .is_err(),
+                "accepted {t} K"
+            );
+        }
+        Ok(())
     }
 
     proptest! {

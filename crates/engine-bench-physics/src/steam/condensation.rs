@@ -3,13 +3,14 @@
 
 use anyhow::Context;
 
-use super::{T_CRIT, T_MIN, Water, properties::saturated};
+use super::{T_CRIT, T_MIN, Water, properties::saturated, transport::dilute_transport};
 use crate::{
     PhysicsError,
-    flow::condensing::{Condensable, CondensationProperties},
+    flow::condensing::{Condensable, CondensationProperties, VapourTransport},
     units::{
-        Mass, SurfaceTension, ThermodynamicTemperature, mass::kilogram,
-        surface_tension::newton_per_meter, thermodynamic_temperature::kelvin,
+        DynamicViscosity, Mass, SurfaceTension, ThermalConductivity, ThermodynamicTemperature,
+        dynamic_viscosity::pascal_second, mass::kilogram, surface_tension::newton_per_meter,
+        thermal_conductivity::watt_per_meter_kelvin, thermodynamic_temperature::kelvin,
     },
 };
 
@@ -46,6 +47,19 @@ impl Condensable for Water {
             liquid_density: sat.liquid.density(),
             latent_heat: sat.vapour.enthalpy - sat.liquid.enthalpy,
             surface_tension: SurfaceTension::new::<newton_per_meter>(surface_tension(kelvin_t)),
+        })
+    }
+
+    fn vapour_transport(&self, t: ThermodynamicTemperature) -> anyhow::Result<VapourTransport> {
+        let kelvin_t = t.get::<kelvin>();
+        if !(kelvin_t > 0.0 && kelvin_t.is_finite()) {
+            return Err(PhysicsError::InvalidState("temperature must be positive"))
+                .with_context(|| format!("water vapour transport at {kelvin_t} K"));
+        }
+        let (mu, k) = dilute_transport(kelvin_t);
+        Ok(VapourTransport {
+            viscosity: DynamicViscosity::new::<pascal_second>(mu),
+            thermal_conductivity: ThermalConductivity::new::<watt_per_meter_kelvin>(k),
         })
     }
 
@@ -86,6 +100,26 @@ mod tests {
         anyhow::ensure!((latent / 2256.5 - 1.0).abs() < 5e-4, "latent heat {latent}");
         let rho = x.liquid_density.get::<kilogram_per_cubic_meter>();
         anyhow::ensure!((rho / 958.35 - 1.0).abs() < 5e-4, "liquid density {rho}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_water_vapour_transport_at_the_boiling_point() -> anyhow::Result<()> {
+        use crate::units::{
+            dynamic_viscosity::pascal_second, thermal_conductivity::watt_per_meter_kelvin,
+        };
+        // Dilute steam at 100 °C: about 12.3 µPa·s and 24.2 mW/(m·K).
+        let x = Water.vapour_transport(ThermodynamicTemperature::new::<kelvin>(373.15))?;
+        let mu = x.viscosity.get::<pascal_second>();
+        let k = x.thermal_conductivity.get::<watt_per_meter_kelvin>();
+        anyhow::ensure!((mu / 12.337e-6 - 1.0).abs() < 1e-4, "viscosity {mu}");
+        anyhow::ensure!((k / 24.156e-3 - 1.0).abs() < 1e-4, "conductivity {k}");
+        anyhow::ensure!(
+            Water
+                .vapour_transport(ThermodynamicTemperature::new::<kelvin>(0.0))
+                .is_err(),
+            "accepted 0 K"
+        );
         Ok(())
     }
 
