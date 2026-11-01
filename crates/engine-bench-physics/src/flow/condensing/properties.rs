@@ -1,7 +1,8 @@
 //! What a condensing flow needs to know of its fluid.
 
 use crate::units::{
-    AvailableEnergy, Mass, MassDensity, Pressure, SurfaceTension, ThermodynamicTemperature,
+    AvailableEnergy, DynamicViscosity, Mass, MassDensity, Pressure, SurfaceTension,
+    ThermalConductivity, ThermodynamicTemperature,
 };
 
 /// Liquid–vapour properties at one temperature, the liquid supercooled below
@@ -18,11 +19,26 @@ pub struct CondensationProperties {
     pub surface_tension: SurfaceTension,
 }
 
+/// Transport properties of the vapour in the dilute-gas limit: condensing
+/// vapour is far below its critical density, where the density-dependent
+/// parts are a few per cent at most.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VapourTransport {
+    /// Dynamic viscosity.
+    pub viscosity: DynamicViscosity,
+    /// Thermal conductivity.
+    pub thermal_conductivity: ThermalConductivity,
+}
+
 /// A fluid that can condense.
 pub trait Condensable {
     /// Properties at temperature `t`, up to (not including) the critical
     /// point.
     fn condensation(&self, t: ThermodynamicTemperature) -> anyhow::Result<CondensationProperties>;
+
+    /// The vapour's dilute-gas viscosity and thermal conductivity at
+    /// temperature `t`.
+    fn vapour_transport(&self, t: ThermodynamicTemperature) -> anyhow::Result<VapourTransport>;
 
     /// Mass of one molecule.
     fn molecular_mass(&self) -> Mass;

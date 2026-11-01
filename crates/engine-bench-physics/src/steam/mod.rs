@@ -32,6 +32,8 @@ mod region3;
 mod region3_backward;
 mod saturation;
 mod state;
+mod transport;
+mod vapour;
 mod volume;
 
 pub use flow::Water;

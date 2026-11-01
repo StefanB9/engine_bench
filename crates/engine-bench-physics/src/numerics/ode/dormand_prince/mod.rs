@@ -81,6 +81,13 @@ impl<const N: usize> DormandPrince45<N> {
         self.previous_error = 1e-4;
     }
 
+    /// Forgets only the cached derivative, keeping the step size and its
+    /// history: for an outside change that rearranges the state without
+    /// changing the solution it represents.
+    pub fn forget_derivative(&mut self) {
+        self.first_stage = None;
+    }
+
     /// Work counters since construction.
     pub fn statistics(&self) -> Statistics {
         self.statistics
@@ -316,6 +323,28 @@ mod tests {
             "y = {}, exact {exact}",
             y[0]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_dormand_prince_forget_derivative_keeps_the_step_size() -> anyhow::Result<()> {
+        // One step, then a rearrangement that keeps the solution: the next
+        // step re-evaluates the derivative (one extra evaluation) but needs no
+        // new step estimate (which reset would cost: two).
+        let mut dp = DormandPrince45::new(AdaptiveOptions::new(1e-8, 1e-12)?);
+        let (mut t, mut y) = (0.0, [1.0]);
+        let mut decay = Decay { rate: 1.0 };
+        dp.step(&mut decay, &mut NoEvents, &mut t, &mut y, 2.0)?;
+        let before = dp.statistics();
+        dp.forget_derivative();
+        dp.step(&mut decay, &mut NoEvents, &mut t, &mut y, 2.0)?;
+        let after = dp.statistics();
+        let trials = after.accepted + after.rejected - before.accepted - before.rejected;
+        anyhow::ensure!(
+            after.evaluations - before.evaluations == 6 * trials + 1,
+            "{before:?} then {after:?}"
+        );
+        anyhow::ensure!((y[0] / (-t).exp() - 1.0).abs() < 1e-7, "y = {}", y[0]);
         Ok(())
     }
 
