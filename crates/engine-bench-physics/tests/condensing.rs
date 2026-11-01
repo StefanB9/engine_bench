@@ -13,12 +13,13 @@
 
 use engine_bench_physics::{
     flow::condensing::{CondensationModel, CondensingFlow, CondensingNozzle, Contour},
+    fluid::PureFluid,
     steam::Water,
     units::{
         Angle, Length, Pressure, ThermodynamicTemperature,
         angle::degree,
         length::{meter, millimeter},
-        pressure::{kilopascal, pascal},
+        pressure::{kilopascal, pascal, torr},
         thermodynamic_temperature::kelvin,
     },
 };
@@ -229,5 +230,53 @@ fn test_moses_stein_257_condensation_against_measurements() -> anyhow::Result<()
     // At the higher pressure condensation sets in sooner.
     let wilson = flow.wilson_point().map_or(f64::NAN, |x| x.get::<meter>());
     anyhow::ensure!((0.018..0.028).contains(&wilson), "Wilson point {wilson} m");
+    Ok(())
+}
+
+/// Yale nozzle B (Wegener et al., NASA CR-163217, 1980): planar, 7 mm deep,
+/// 4 mm throat, 20 mm throat curvature, 3.4° walls, 13.3 mm exit.
+fn yale() -> anyhow::Result<Contour> {
+    let mm = Length::new::<millimeter>;
+    Contour::planar(
+        mm(7.0),
+        mm(4.0),
+        mm(13.3),
+        mm(20.0),
+        Angle::new::<degree>(3.4),
+    )
+}
+
+#[test]
+fn test_yale_nitrogen_onsets_stay_beyond_homogeneous_nucleation() -> anyhow::Result<()> {
+    // Light scattering saw condensate at the exit (liquid fraction 1e-6 to
+    // 1e-5) for these supply states (torr, K). Homogeneous nucleation, by
+    // either theory, gives far less: MKNT about 1e-23 there, and it would
+    // take a rate factor of ~1e17 (Kalikmanov finds his theory 4 to 7 orders
+    // low for nitrogen, not 17). The 1980 onsets are taken as not
+    // homogeneous (impurities or supply clusters, plan 0005); this test
+    // keeps the gap on record and fails if the model ever closes it.
+    for (p0, t0) in [(244.0, 107.0), (463.0, 113.0), (1357.0, 134.0)] {
+        let supply = (
+            Pressure::new::<torr>(p0),
+            ThermodynamicTemperature::new::<kelvin>(t0),
+        );
+        let exit = |model: CondensationModel| -> anyhow::Result<(f64, f64)> {
+            let flow = CondensingNozzle::new(PureFluid::Nitrogen, yale()?, model)
+                .expand(supply.0, supply.1)?;
+            let e = flow.exit().ok_or_else(|| anyhow::anyhow!("no exit"))?;
+            Ok((e.liquid_fraction, e.nucleation_rate))
+        };
+        let (y_mknt, j_mknt) = exit(CondensationModel::cryogenic())?;
+        let (y_classical, j_classical) = exit(CondensationModel::default())?;
+        anyhow::ensure!(
+            y_mknt < 1e-12 && y_classical <= y_mknt,
+            "{p0} torr: {y_mknt}, {y_classical}"
+        );
+        // MKNT raises the rate by orders of magnitude, as in its paper.
+        anyhow::ensure!(
+            j_mknt > 1e6 * j_classical,
+            "{p0} torr: J {j_mknt} vs {j_classical}"
+        );
+    }
     Ok(())
 }

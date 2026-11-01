@@ -98,6 +98,16 @@ impl CondensationModel {
         }
     }
 
+    /// The model for simple cryogenic fluids (N₂, Ar, CO₂): Kalikmanov's
+    /// mean-field kinetic nucleation, as published. Classical theory is 11 to
+    /// 13 orders of magnitude low for argon in a cryogenic nozzle, this one
+    /// within one (Sinha et al., J. Chem. Phys. 132, 064304, 2010); the
+    /// Kantrowitz correction stays, the vapour being pure.
+    #[must_use]
+    pub fn cryogenic() -> Self {
+        Self::default().with_theory(NucleationTheory::MeanFieldKinetic)
+    }
+
     /// The same model with nucleation by `theory`.
     #[must_use]
     pub fn with_theory(self, theory: NucleationTheory) -> Self {
@@ -147,6 +157,11 @@ mod tests {
         anyhow::ensure!(!CondensationModel::frozen().nucleation, "frozen");
         let m = m.with_theory(NucleationTheory::MeanFieldKinetic);
         anyhow::ensure!(m.theory == NucleationTheory::MeanFieldKinetic, "theory");
+        let c = CondensationModel::cryogenic();
+        anyhow::ensure!(
+            c.theory == NucleationTheory::MeanFieldKinetic && c.kantrowitz,
+            "{c:?}"
+        );
         anyhow::ensure!(
             m.with_rate_factor(0.0).is_err() && m.with_rate_factor(f64::NAN).is_err(),
             "factor"
