@@ -21,6 +21,7 @@ mod backward;
     reason = "generated tables reproduce the IF97 coefficients digit for digit"
 )]
 mod coefficients;
+mod condensation;
 mod flow;
 mod gibbs;
 mod helmholtz;

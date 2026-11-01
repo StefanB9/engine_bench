@@ -5,6 +5,7 @@
 //! and a small error for warm gas; a thermally perfect variant follows with
 //! equilibrium chemistry (M5).
 
+pub mod condensing;
 pub mod isentropic;
 pub(crate) mod nozzle;
 pub(crate) mod orifice;
