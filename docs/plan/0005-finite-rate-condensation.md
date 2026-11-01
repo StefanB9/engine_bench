@@ -102,6 +102,16 @@ condensation at a finite rate.
     x² there).
   - Moore nozzle B is not used: its inlet is not fully specified and its curvature
     discontinuity sends waves across the flow that no 1D model follows.
+- **Nucleation of the cryogenic fluids** (decided after the first results): classical theory
+  matches steam (the project's Fig. 14 to 0.1 decade; Moses and Stein's pressures within 0.005
+  to 0.025 of p₀) but needs 20–25 K of subcooling for nitrogen where the Yale nozzle shows onset
+  at 7–10 K (supply 32–37 K colder than measured). Sinha et al. (J. Chem. Phys. 132, 064304,
+  2010) find the same for argon in a cryogenic nozzle: classical rates 11–13 orders too low,
+  Kalikmanov's mean-field kinetic nucleation theory within one order. Physically based
+  alternatives (mean-field kinetic theory, Girshick–Chiu's internally consistent theory, Hale's
+  scaled theory, Dillmann–Meier) are tested against both the Yale onsets and the steam data;
+  the one that fits both without per-fluid tuning is adopted, else a per-fluid calibration,
+  reported.
 - **Physics limits**: no nucleation reduces to the frozen solution; fast growth approaches
   equilibrium (HEM); mass and energy conserved along the march; droplet classes merged without
   changing the liquid mass.
