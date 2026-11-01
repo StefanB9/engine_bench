@@ -11,7 +11,8 @@ engine_bench/                          (workspace root)
 ├── Cargo.toml                         [workspace] manifest — all dependency versions here
 ├── clippy.toml                        doc-valid-idents (proper names, units)
 ├── docs/plan/                         Approved plans
-├── tools/reference/                   Offline scripts: IF97 tables, reference EOS, CoolProp goldens (EOS, real flow)
+├── tools/reference/                   Offline scripts: IF97 tables, reference EOS, CoolProp goldens (EOS, real flow,
+    │                                    condensation properties)
 │
 └── crates/
     ├── engine-bench-physics/          (library — units, thermo, chemistry, numerics, solvers)
@@ -32,6 +33,9 @@ engine_bench/                          (workspace root)
     │       │                          body, aero loads (wind, pitch and jet damping), Barrowman
     │       ├── flow/                  Compressible flow: perfect gas (γ frozen upstream) and real
     │       │                          fluids
+    │       │   ├── condensing/        Finite-rate condensation (plan 0005): Contour (conical or
+    │       │                          planar, arc throat), Condensable (σ, latent heat, liquid
+    │       │                          density, vapour pressure; supercooled below triple point)
     │       │   ├── isentropic.rs      Ratios vs Mach, A/A*, M(A/A*), Prandtl–Meyer
     │       │   ├── shock.rs           Normal-shock relations
     │       │   ├── orifice.rs         Reservoir, Orifice: bidirectional, choked, C¹ near Δp = 0
@@ -42,13 +46,15 @@ engine_bench/                          (workspace root)
     │       ├── fluid/                 Reference Helmholtz EOS for N2, Ar, He, CO2 (CoolProp data,
     │       │                          NASA reference state): properties(p, T), saturation(T),
     │       │                          state_from_uv with the two-phase dome; RealFluid (flow.rs);
-    │       │                          FrozenVapour (frozen.rs: supersaturated nozzle expansion)
+    │       │                          FrozenVapour (frozen.rs: supersaturated nozzle expansion);
+    │       │                          Condensable (condensation.rs: Mulero surface tension)
     │       │   └── table/             TabulatedFluid: vapour and liquid branch tables in
     │       │                          (ln p, s), saturation table in θ = (1 − T/Tc)^(1/3), HEM;
     │       │                          equilibrium or frozen; exact fallback; cached per fluid
     │       ├── steam/                 IAPWS-IF97 water/steam, all 5 regions: properties(p, T),
     │       │                          saturated(T), T(p, h), T(p, s), state_from_uv (two-phase
-    │       │                          dome), SteamVolume, Water: RealFluid (flow.rs);
+    │       │                          dome), SteamVolume, Water: RealFluid (flow.rs), Condensable
+    │       │                          (condensation.rs: IAPWS surface tension);
     │       │                          coefficients/ generated from CoolProp/IF97 (MIT)
     │       ├── units.rs               uom SI quantities for public APIs
     │       ├── gas/                   Lumped volumes: ControlVolume<S, N, E = IdealGas>,
