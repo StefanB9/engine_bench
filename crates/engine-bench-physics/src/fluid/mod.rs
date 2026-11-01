@@ -13,6 +13,7 @@
     reason = "generated tables reproduce the published coefficients digit for digit"
 )]
 mod coefficients;
+mod condensation;
 mod flow;
 mod frozen;
 mod helmholtz;

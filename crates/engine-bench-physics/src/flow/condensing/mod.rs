@@ -3,5 +3,7 @@
 //! flow (plan 0005).
 
 mod contour;
+mod properties;
 
 pub use contour::Contour;
+pub use properties::{Condensable, CondensationProperties};
