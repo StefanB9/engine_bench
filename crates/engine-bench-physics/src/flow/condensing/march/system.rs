@@ -176,7 +176,7 @@ impl<F: CondensingFluid> March<'_, F> {
             latent: at_t.latent,
             molecule: self.molecule,
         };
-        Some(match self.model.theory {
+        let (rate, radius) = match self.model.theory {
             NucleationTheory::Classical => nucleation(
                 &vapour,
                 self.model.condensation_coefficient,
@@ -195,7 +195,8 @@ impl<F: CondensingFluid> March<'_, F> {
                 };
                 (rate / correction, radius)
             }
-        })
+        };
+        Some((rate * self.model.rate_factor, radius))
     }
 
     /// The growth law at station `s`; `None` above the dome or out of the

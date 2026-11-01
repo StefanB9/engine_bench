@@ -21,6 +21,9 @@ pub enum NucleationTheory {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CondensationModel {
     pub(crate) theory: NucleationTheory,
+    /// Multiplies the nucleation rate: 1 for the theories as published,
+    /// fitted to measured onsets where they fall short.
+    pub(crate) rate_factor: f64,
     /// Young's α, which relates the condensation and evaporation
     /// coefficients.
     pub(crate) alpha: f64,
@@ -43,6 +46,7 @@ impl Default for CondensationModel {
     fn default() -> Self {
         Self {
             theory: NucleationTheory::Classical,
+            rate_factor: 1.0,
             alpha: 9.0,
             beta: 0.0,
             condensation_coefficient: 1.0,
@@ -100,6 +104,21 @@ impl CondensationModel {
         Self { theory, ..self }
     }
 
+    /// The same model with its nucleation rate multiplied by `factor`
+    /// (positive): a calibration to measured onsets.
+    pub fn with_rate_factor(self, factor: f64) -> anyhow::Result<Self> {
+        if !(factor > 0.0 && factor.is_finite()) {
+            return Err(PhysicsError::InvalidSetting(
+                "rate factor must be positive and finite",
+            ))
+            .with_context(|| format!("factor = {factor}"));
+        }
+        Ok(Self {
+            rate_factor: factor,
+            ..self
+        })
+    }
+
     /// The same model without the Kantrowitz correction (isothermal rate).
     #[must_use]
     pub fn without_kantrowitz(self) -> Self {
@@ -128,6 +147,8 @@ mod tests {
         anyhow::ensure!(!CondensationModel::frozen().nucleation, "frozen");
         let m = m.with_theory(NucleationTheory::MeanFieldKinetic);
         anyhow::ensure!(m.theory == NucleationTheory::MeanFieldKinetic, "theory");
+        anyhow::ensure!(m.with_rate_factor(0.0).is_err() && m.with_rate_factor(f64::NAN).is_err(), "factor");
+        anyhow::ensure!((m.with_rate_factor(1e5)?.rate_factor - 1e5).abs() < 1e-6, "factor");
         Ok(())
     }
 }

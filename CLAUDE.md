@@ -20,6 +20,8 @@ engine_bench/                          (workspace root)
     │   ├── data/thermo.inp            Vendored NASA Glenn 9-coefficient records (from NASA CEA)
     │   ├── benches/kernels.rs         criterion benchmarks of hot kernels (baseline, not a gate)
     │   ├── proptest-regressions/      Saved proptest failure seeds (committed, re-run first)
+    │   ├── tests/condensing.rs        Integration: condensing steam vs Moses & Stein measurements,
+    │   │                                N2 onsets vs the Yale nozzle (fitted MKNT rate factor)
     │   ├── tests/control_volume.rs    Integration: coupled volumes, conservation, blowdown
     │   ├── tests/flight.rs            Integration: ballistics, terminal velocity, stability, wind
     │   ├── tests/peng_robinson.rs     Integration: PR compressibility vs CoolProp, measured accuracy
@@ -35,7 +37,13 @@ engine_bench/                          (workspace root)
     │       │                          fluids
     │       │   ├── condensing/        Finite-rate condensation (plan 0005): Contour (conical or
     │       │                          planar, arc throat), Condensable (σ, latent heat, liquid
-    │       │                          density, vapour pressure; supercooled below triple point)
+    │       │                          density, vapour pressure; supercooled below triple point;
+    │       │                          dilute-gas transport), CondensingFluid (metastable vapour
+    │       │                          kernel), CondensationModel: classical or Kalikmanov MKNT
+    │       │                          nucleation (mknt.rs, Kantrowitz, rate factor), Young growth
+    │       │   │   └── march/         CondensingNozzle: DP45 march in x holding ṁ, h0 and F = pA +
+    │       │                          ṁu exactly; droplet classes (≤ 64, merged); normal shock as
+    │       │                          the subsonic root, back-pressure search; CondensingFlow
     │       │   ├── isentropic.rs      Ratios vs Mach, A/A*, M(A/A*), Prandtl–Meyer
     │       │   ├── shock.rs           Normal-shock relations
     │       │   ├── orifice.rs         Reservoir, Orifice: bidirectional, choked, C¹ near Δp = 0
@@ -47,14 +55,16 @@ engine_bench/                          (workspace root)
     │       │                          NASA reference state): properties(p, T), saturation(T),
     │       │                          state_from_uv with the two-phase dome; RealFluid (flow.rs);
     │       │                          FrozenVapour (frozen.rs: supersaturated nozzle expansion);
-    │       │                          Condensable (condensation.rs: Mulero surface tension)
+    │       │                          Condensable (condensation.rs: Mulero surface tension;
+    │       │                          transport.rs: dilute viscosity, conductivity), vapour.rs
     │       │   └── table/             TabulatedFluid: vapour and liquid branch tables in
     │       │                          (ln p, s), saturation table in θ = (1 − T/Tc)^(1/3), HEM;
     │       │                          equilibrium or frozen; exact fallback; cached per fluid
     │       ├── steam/                 IAPWS-IF97 water/steam, all 5 regions: properties(p, T),
     │       │                          saturated(T), T(p, h), T(p, s), state_from_uv (two-phase
     │       │                          dome), SteamVolume, Water: RealFluid (flow.rs), Condensable
-    │       │                          (condensation.rs: IAPWS surface tension);
+    │       │                          (condensation.rs: IAPWS surface tension; transport.rs:
+    │       │                          IAPWS dilute terms; vapour.rs: metastable-vapour Eq. 18);
     │       │                          coefficients/ generated from CoolProp/IF97 (MIT)
     │       ├── units.rs               uom SI quantities for public APIs
     │       ├── gas/                   Lumped volumes: ControlVolume<S, N, E = IdealGas>,
