@@ -86,6 +86,12 @@ momentum) and thermodynamic consistency (h = ∫cp dT, Gibbs relation).
 
 Each milestone after M0 gets its own detailed plan in `docs/plan/` before implementation.
 
+**Visuals are finished per engine**: an engine ships with its final animated scene, since
+everything a scene draws must be a recorded channel and a later visual pass would change
+channel lists (schema bumps, old recordings unreadable). First a shared visual language in
+the painter (flow colouring, droplet and exhaust particles, common parts), piloted on the
+cold-gas thruster after its condensation work (plan 0005).
+
 \* Steam: IAPWS-IF97 implemented in physics (no crate dependency) — decided in the M3 plan.
 
 ## Planned dependencies (each justified in its milestone plan)

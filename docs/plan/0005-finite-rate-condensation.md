@@ -34,6 +34,20 @@ condensation at a finite rate.
   solution still holds. The vapour on the reference equation (metastable vapour branch).
 - **Shocks**: a normal shock in the nozzle passes the droplets through unchanged; behind it the
   same growth law evaporates them in the subsonic flow.
+- **Transport**: the growth law needs the vapour's viscosity (mean free path, Knudsen number)
+  and thermal conductivity, in the dilute-gas limit (condensing vapour is far below its
+  critical density): Lemmon and Jacobsen (2004) for N₂ and Ar, Arp et al. (1998) and Hands
+  (1981) for He, Laesecke and Muzny (2017) and Huber et al. (2016) for CO₂, IAPWS (2008, 2011)
+  for water; coefficients from CoolProp's sources, checked against CoolProp goldens.
+- **Model parameters**: Young's growth law with his α = 9 and β = 0 (Young 1982; the project
+  found α ≈ 11 best for the low-pressure cases), condensation coefficient 1, Kantrowitz
+  correction on, flat-film surface tension. Fitted to steam; for the other fluids no data
+  fixes them, so the same values.
+- **Formulation**: conservation held algebraically (mass flow, stagnation enthalpy, impulse
+  function F = pA + ṁu with dF/dx = p·dA/dx), so the march conserves to round-off; the ODE
+  carries F and the droplet classes. The droplets nucleated within one integration step
+  form one class (number and liquid mass), closed when the step is accepted; with at most
+  64 classes the two most alike are merged.
 - **Outputs**: exit state, thrust, liquid mass fraction, droplet spectrum (mean radius), Wilson
   point (where condensation sets in).
 
@@ -66,9 +80,28 @@ condensation at a finite rate.
   - Test: for each supply state the predicted Wilson point lies near the exit. The tolerance is
     set from the measured agreement and reported (classical nucleation theory is known to be
     off by orders of magnitude in rate, much less in onset temperature).
-- **Steam, Moore et al. (1973) nozzle B** (p₀ = 25 kPa, T₀ = 358 K; pressure along the nozzle and
-  mean droplet radius): only if the measured data become available (the International Wet
-  Steam Modelling Project report is not reachable from this environment).
+- **Steam, Moses and Stein nozzle, cases 252 and 257** (Starzmann et al., *Results of the
+  International Wet Steam Modeling Project*, Proc. IMechE Part A 232(5), 2018,
+  doi:10.1177/0957650918758779; measured points read from its Figures 4 and 5, the markers
+  located on the page rendered at 300 dpi, to about 0.5 % of each axis; the paper gives no
+  tables). Planar, throat 10 × 10 mm. The measured droplet radius is ±20 %.
+  - Case 252: p₀ = 40.05 kPa, T₀ = 374.3 K. p/p₀ at x (cm): 2.054 0.3969, 2.259 0.3829,
+    2.469 0.3687, 2.682 0.3544, 2.902 0.3402, 3.141 0.3259, 3.371 0.3119, 3.559 0.3004,
+    3.732 0.2970, 3.911 0.2971, 4.085 0.2989, 4.259 0.2985, 4.424 0.2953, 4.560 0.2896,
+    4.770 0.2798, 5.068 0.2661, 5.412 0.2508, 5.691 0.2381, 5.993 0.2241. Sauter radius (nm)
+    at x (cm): 3.465 10.57, 3.665 11.90, 3.853 12.92, 4.023 13.75, 4.209 14.53, 4.411 15.24,
+    4.604 15.81, 4.791 16.35, 4.979 16.78, 5.165 17.13, 5.377 17.44, 5.575 17.75, 5.773 18.03,
+    5.970 18.19.
+  - Case 257: p₀ = 67.66 kPa, T₀ = 376.7 K. p/p₀: 1.957 0.4000, 2.212 0.3897, 2.840 0.3814,
+    3.446 0.3841, 3.920 0.3557, 4.480 0.3236, 5.111 0.2870. Sauter radius (nm): 2.495 16.83,
+    3.895 29.24, 6.003 34.34.
+  - Geometry: the wall arcs (5.3 cm into 68.6 cm) are given without the point where they meet,
+    and the small throat makes boundary-layer blockage significant. As the paper recommends
+    for 1D validation, the effective area comes from the dry (pre-condensation) pressures: a
+    throat arc whose radius of curvature is fitted to the dry points of each case (A/A* − 1 ∝
+    x² there).
+  - Moore nozzle B is not used: its inlet is not fully specified and its curvature
+    discontinuity sends waves across the flow that no 1D model follows.
 - **Physics limits**: no nucleation reduces to the frozen solution; fast growth approaches
   equilibrium (HEM); mass and energy conserved along the march; droplet classes merged without
   changing the liquid mass.
