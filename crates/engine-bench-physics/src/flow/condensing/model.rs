@@ -5,10 +5,22 @@ use anyhow::Context;
 
 use crate::PhysicsError;
 
-/// Classical nucleation with Kantrowitz's non-isothermal correction and
-/// Young's (1982) droplet growth law.
+/// Which theory gives the nucleation rate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NucleationTheory {
+    /// Classical (Volmer–Frenkel–Zeldovich): capillarity down to the
+    /// critical cluster.
+    Classical,
+    /// Kalikmanov's mean-field kinetic theory: microscopic surface tension
+    /// for small clusters, the classical limit for large ones.
+    MeanFieldKinetic,
+}
+
+/// Nucleation (with Kantrowitz's non-isothermal correction) and Young's
+/// (1982) droplet growth law.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CondensationModel {
+    pub(crate) theory: NucleationTheory,
     /// Young's α, which relates the condensation and evaporation
     /// coefficients.
     pub(crate) alpha: f64,
@@ -30,6 +42,7 @@ impl Default for CondensationModel {
     /// Young's own α = 9, β = 0, `q_c` = 1, with the Kantrowitz correction.
     fn default() -> Self {
         Self {
+            theory: NucleationTheory::Classical,
             alpha: 9.0,
             beta: 0.0,
             condensation_coefficient: 1.0,
@@ -81,7 +94,13 @@ impl CondensationModel {
         }
     }
 
-    /// The same model without the Kantrowitz correction (classical rate).
+    /// The same model with nucleation by `theory`.
+    #[must_use]
+    pub fn with_theory(self, theory: NucleationTheory) -> Self {
+        Self { theory, ..self }
+    }
+
+    /// The same model without the Kantrowitz correction (isothermal rate).
     #[must_use]
     pub fn without_kantrowitz(self) -> Self {
         Self {
@@ -107,6 +126,8 @@ mod tests {
         anyhow::ensure!(m.with_condensation_coefficient(0.0).is_err(), "q_c = 0");
         anyhow::ensure!(!m.without_kantrowitz().kantrowitz, "kantrowitz");
         anyhow::ensure!(!CondensationModel::frozen().nucleation, "frozen");
+        let m = m.with_theory(NucleationTheory::MeanFieldKinetic);
+        anyhow::ensure!(m.theory == NucleationTheory::MeanFieldKinetic, "theory");
         Ok(())
     }
 }

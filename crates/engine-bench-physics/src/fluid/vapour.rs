@@ -1,7 +1,13 @@
 //! The reference fluids' metastable vapour for condensing flow: the Helmholtz
 //! equation at (ρ, T), with ρ the natural variable.
 
-use super::{PureFluid, frozen::vapour_density, helmholtz::molar, saturation::dome_top};
+use super::{
+    PureFluid,
+    frozen::vapour_density,
+    helmholtz::{molar, residual},
+    saturation::dome_top,
+    transport::lennard_jones_diameter,
+};
 use crate::flow::condensing::{VapourPoint, kernel::VapourKernel};
 
 impl VapourKernel for PureFluid {
@@ -34,6 +40,21 @@ impl VapourKernel for PureFluid {
 
     fn dome_top(&self) -> f64 {
         dome_top(self.data())
+    }
+
+    /// From the second virial coefficient B(T) = lim (∂αʳ/∂δ)/ρ꜀ (δ → 0): Z − 1
+    /// ≈ B·p/(RT), as Kalikmanov evaluates it (his Eq. 26).
+    fn saturated_excess(&self, t: f64, p_sat: f64) -> f64 {
+        const DILUTE: f64 = 1e-10;
+        let fluid = self.data();
+        let r = residual(fluid, DILUTE, fluid.data.t_crit / t);
+        let b = r.d / DILUTE / fluid.data.rho_crit;
+        b * p_sat / (fluid.data.gas_constant * t)
+    }
+
+    /// The Lennard-Jones σ of the dilute-gas viscosity correlation.
+    fn molecular_diameter(&self) -> f64 {
+        lennard_jones_diameter(*self)
     }
 }
 

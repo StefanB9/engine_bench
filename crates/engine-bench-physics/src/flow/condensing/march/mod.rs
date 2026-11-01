@@ -257,7 +257,10 @@ impl<F: CondensingFluid> Run<'_, F> {
                 .with_context(|| {
                     let s = &self.march.last;
                     format!(
-                        "condensing march at x = {x:.6} m (frozen Mach {:.4}, liquid {:.4})",
+                        "condensing march at x = {x:.6} m (vapour at {:.2} K, {:.1} Pa, frozen \
+                         Mach {:.4}, liquid {:.4})",
+                        s.t,
+                        s.vapour.p,
                         s.u / s.frozen_sound_speed(),
                         s.y
                     )
@@ -266,10 +269,16 @@ impl<F: CondensingFluid> Run<'_, F> {
                 solver.forget_derivative();
             }
             // The station at the accepted point, for the next restart.
-            let local = self
-                .march
-                .local(x, &y, None)
-                .ok_or(PhysicsError::InvalidState("station after an accepted step"))?;
+            let local = self.march.local(x, &y, None).ok_or_else(|| {
+                let s = &self.march.last;
+                anyhow::Error::from(PhysicsError::InvalidState(
+                    "no flow state or condensation properties: beyond the fluid's property range",
+                ))
+                .context(format!(
+                    "condensing march at x = {x:.6} m (vapour at {:.2} K, {:.1} Pa)",
+                    s.t, s.vapour.p
+                ))
+            })?;
             at = Checkpoint {
                 x,
                 y,

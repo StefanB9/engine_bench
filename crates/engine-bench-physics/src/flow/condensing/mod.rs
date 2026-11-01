@@ -5,6 +5,7 @@
 mod contour;
 mod growth;
 mod march;
+mod mknt;
 mod model;
 mod nucleation;
 mod properties;
@@ -12,7 +13,7 @@ mod vapour;
 
 pub use contour::Contour;
 pub use march::{CondensingFlow, CondensingNozzle, FlowSample};
-pub use model::CondensationModel;
+pub use model::{CondensationModel, NucleationTheory};
 pub use properties::{Condensable, CondensationProperties, VapourTransport};
 pub use vapour::{CondensingFluid, VapourPoint};
 pub(crate) use vapour::{kernel, saturation_temperature};

@@ -54,6 +54,14 @@ pub(crate) mod kernel {
 
         /// The highest temperature, K, at which liquid and vapour coexist.
         fn dome_top(&self) -> f64;
+
+        /// Excess compressibility Z − 1 (negative) of the vapour saturated
+        /// at `t` K, where its pressure is `p_sat` Pa.
+        fn saturated_excess(&self, t: f64, p_sat: f64) -> f64;
+
+        /// Effective molecular diameter, m: the position of the first peak
+        /// of the liquid's pair correlation, or a hard-sphere diameter.
+        fn molecular_diameter(&self) -> f64;
     }
 }
 

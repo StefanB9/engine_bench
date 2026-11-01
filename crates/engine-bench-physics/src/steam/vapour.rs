@@ -7,7 +7,7 @@
 //! 12 kPa).
 
 use super::{
-    T_CRIT, Water,
+    R as GAS_CONSTANT, T_CRIT, Water,
     gibbs::{metastable_vapour, region2},
     saturation::saturation_temperature_si,
 };
@@ -55,6 +55,17 @@ impl VapourKernel for Water {
 
     fn dome_top(&self) -> f64 {
         T_CRIT
+    }
+
+    /// From the region 2 equation on the saturation line.
+    fn saturated_excess(&self, t: f64, p_sat: f64) -> f64 {
+        p_sat * region2(p_sat, t).v / (GAS_CONSTANT * t) - 1.0
+    }
+
+    /// The first peak of liquid water's oxygen–oxygen pair correlation,
+    /// 2.8 Å (the paper's first-peak position, its preferred measure).
+    fn molecular_diameter(&self) -> f64 {
+        2.8e-10
     }
 }
 

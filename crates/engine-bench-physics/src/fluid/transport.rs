@@ -119,6 +119,18 @@ fn carbon_dioxide_conductivity(t: f64) -> f64 {
     1e-3 / (tau.sqrt() * den)
 }
 
+/// Lennard-Jones σ, m, of the viscosity correlations (Lemmon and Jacobsen
+/// for N₂ and Ar, Laesecke and Muzny for CO₂; for He Hirschfelder, Curtiss
+/// and Bird's 2.576 Å).
+pub(crate) fn lennard_jones_diameter(fluid: PureFluid) -> f64 {
+    match fluid {
+        PureFluid::Nitrogen => NITROGEN.sigma * 1e-9,
+        PureFluid::Argon => ARGON.sigma * 1e-9,
+        PureFluid::Helium => 2.576e-10,
+        PureFluid::CarbonDioxide => 3.784_21e-10,
+    }
+}
+
 /// Dilute-gas viscosity, Pa·s, and thermal conductivity, W/(m·K), of
 /// `fluid` at `t` K.
 pub(crate) fn dilute_transport(fluid: PureFluid, t: f64) -> (f64, f64) {

@@ -27,6 +27,13 @@ pub(crate) struct Supersaturated {
     pub(crate) molecule: f64,
 }
 
+/// Kantrowitz's 1 + φ, φ = 2(γ − 1)/(γ + 1)·(L/RT)·(L/RT − ½): how much the
+/// latent heat warming the clusters slows nucleation in a pure vapour.
+pub(crate) fn kantrowitz_factor(v: &Supersaturated) -> f64 {
+    let x = v.latent * v.molecule / (BOLTZMANN * v.t);
+    1.0 + 2.0 * (v.gamma - 1.0) / (v.gamma + 1.0) * x * (x - 0.5)
+}
+
 /// Nucleation rate, 1/(m³·s), and critical radius, m (infinite at or below
 /// saturation, where the rate is zero).
 pub(crate) fn nucleation(
@@ -44,8 +51,7 @@ pub(crate) fn nucleation(
     let prefactor = condensation_coefficient * v.rho * v.rho / v.rho_liquid
         * (2.0 * v.sigma / (PI * v.molecule.powi(3))).sqrt();
     let correction = if kantrowitz {
-        let x = v.latent / (gas_constant * v.t);
-        1.0 + 2.0 * (v.gamma - 1.0) / (v.gamma + 1.0) * x * (x - 0.5)
+        kantrowitz_factor(v)
     } else {
         1.0
     };

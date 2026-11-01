@@ -9,9 +9,10 @@ use super::{
 };
 use crate::{
     flow::condensing::{
-        CondensationModel, CondensingFluid, Contour,
+        CondensationModel, CondensingFluid, Contour, NucleationTheory,
         growth::{Growth, Surroundings},
-        nucleation::{Supersaturated, nucleation},
+        mknt::{ClusterData, mean_field_kinetic},
+        nucleation::{Supersaturated, kantrowitz_factor, nucleation},
     },
     numerics::ode::OdeSystem,
     units::{
@@ -164,21 +165,37 @@ impl<F: CondensingFluid> March<'_, F> {
         }
         let v = &s.vapour;
         let at_t = saturation(self.fluid, s.t)?;
-        Some(nucleation(
-            &Supersaturated {
-                p: v.p,
-                t: s.t,
-                rho: v.rho,
-                gamma: v.cp / v.cv,
-                p_sat: at_t.p,
-                sigma: at_t.sigma,
-                rho_liquid: at_t.rho_liquid,
-                latent: at_t.latent,
-                molecule: self.molecule,
-            },
-            self.model.condensation_coefficient,
-            self.model.kantrowitz,
-        ))
+        let vapour = Supersaturated {
+            p: v.p,
+            t: s.t,
+            rho: v.rho,
+            gamma: v.cp / v.cv,
+            p_sat: at_t.p,
+            sigma: at_t.sigma,
+            rho_liquid: at_t.rho_liquid,
+            latent: at_t.latent,
+            molecule: self.molecule,
+        };
+        Some(match self.model.theory {
+            NucleationTheory::Classical => nucleation(
+                &vapour,
+                self.model.condensation_coefficient,
+                self.model.kantrowitz,
+            ),
+            NucleationTheory::MeanFieldKinetic => {
+                let clusters = ClusterData {
+                    z_excess: self.fluid.saturated_excess(s.t, at_t.p),
+                    diameter: self.fluid.molecular_diameter(),
+                };
+                let (rate, radius) = mean_field_kinetic(&vapour, &clusters);
+                let correction = if self.model.kantrowitz {
+                    kantrowitz_factor(&vapour)
+                } else {
+                    1.0
+                };
+                (rate / correction, radius)
+            }
+        })
     }
 
     /// The growth law at station `s`; `None` above the dome or out of the
