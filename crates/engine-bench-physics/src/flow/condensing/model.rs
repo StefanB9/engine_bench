@@ -147,8 +147,14 @@ mod tests {
         anyhow::ensure!(!CondensationModel::frozen().nucleation, "frozen");
         let m = m.with_theory(NucleationTheory::MeanFieldKinetic);
         anyhow::ensure!(m.theory == NucleationTheory::MeanFieldKinetic, "theory");
-        anyhow::ensure!(m.with_rate_factor(0.0).is_err() && m.with_rate_factor(f64::NAN).is_err(), "factor");
-        anyhow::ensure!((m.with_rate_factor(1e5)?.rate_factor - 1e5).abs() < 1e-6, "factor");
+        anyhow::ensure!(
+            m.with_rate_factor(0.0).is_err() && m.with_rate_factor(f64::NAN).is_err(),
+            "factor"
+        );
+        anyhow::ensure!(
+            (m.with_rate_factor(1e5)?.rate_factor - 1e5).abs() < 1e-6,
+            "factor"
+        );
         Ok(())
     }
 }
