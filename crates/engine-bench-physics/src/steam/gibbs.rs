@@ -8,7 +8,10 @@ use super::{
     R,
     coefficients::{
         Term,
-        gibbs::{REGION1, REGION2_IDEAL, REGION2_RESIDUAL, REGION5_IDEAL, REGION5_RESIDUAL},
+        gibbs::{
+            METASTABLE_IDEAL, METASTABLE_RESIDUAL, REGION1, REGION2_IDEAL, REGION2_RESIDUAL,
+            REGION5_IDEAL, REGION5_RESIDUAL,
+        },
     },
 };
 
@@ -53,6 +56,18 @@ pub(crate) fn region2(p: f64, t: f64) -> RawProperties {
     const T_STAR: f64 = 540.0;
     let (pi, tau) = (p / P_STAR, T_STAR / t);
     let g = ideal(&REGION2_IDEAL, pi, tau).plus(&residual(&REGION2_RESIDUAL, pi, tau - 0.5));
+    g.properties(pi, tau, P_STAR, t)
+}
+
+/// Metastable (supersaturated) vapour properties: the supplementary
+/// Eq. (18), valid from the saturated-vapour line to the 5 % equilibrium
+/// moisture line, triple-point pressure to 10 MPa (the basic equation
+/// diverges there).
+pub(crate) fn metastable_vapour(p: f64, t: f64) -> RawProperties {
+    const P_STAR: f64 = 1e6;
+    const T_STAR: f64 = 540.0;
+    let (pi, tau) = (p / P_STAR, T_STAR / t);
+    let g = ideal(&METASTABLE_IDEAL, pi, tau).plus(&residual(&METASTABLE_RESIDUAL, pi, tau - 0.5));
     g.properties(pi, tau, P_STAR, t)
 }
 
@@ -250,6 +265,40 @@ mod tests {
         ],
     ];
 
+    /// Table 18 (metastable vapour).
+    const TABLE18: [Row; 3] = [
+        [
+            450.0,
+            1.0,
+            0.192516540,
+            2768.81115,
+            2576.29461,
+            6.56660377,
+            2.76349265,
+            498.408101,
+        ],
+        [
+            440.0,
+            1.0,
+            0.186212297,
+            2740.15123,
+            2553.93894,
+            6.50218759,
+            2.98166443,
+            489.363295,
+        ],
+        [
+            450.0,
+            1.5,
+            0.121685206,
+            2721.34539,
+            2538.81758,
+            6.29170440,
+            3.62795578,
+            481.941819,
+        ],
+    ];
+
     /// The tables give 9 significant digits.
     const TOLERANCE: f64 = 5e-8;
 
@@ -283,6 +332,11 @@ mod tests {
     #[test]
     fn test_region2_matches_iapws_table_15() -> anyhow::Result<()> {
         check(&TABLE15, region2)
+    }
+
+    #[test]
+    fn test_metastable_vapour_matches_iapws_table_18() -> anyhow::Result<()> {
+        check(&TABLE18, metastable_vapour)
     }
 
     #[test]

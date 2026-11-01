@@ -114,6 +114,90 @@ pub(crate) const REGION2_IDEAL: [(i32, f64); 9] = [
     (3, 0.021268463753307),
 ];
 
+/// Ideal-gas part of the metastable-vapour equation, Eq. (18): Table 10
+/// with n°₁ and n°₂ readjusted (its footnote).
+pub(crate) const METASTABLE_IDEAL: [(i32, f64); 9] = [
+    (0, -9.6937268393049),
+    (1, 10.087275970006),
+    (-5, -0.005608791128302),
+    (-4, 0.071452738081455),
+    (-3, -0.40710498223928),
+    (-2, 1.4240819171444),
+    (-1, -4.383951131945),
+    (2, -0.28408632460772),
+    (3, 0.021268463753307),
+];
+
+/// Residual part of the metastable-vapour equation: γʳ = Σ nᵢ π^Iᵢ
+/// (τ − 0.5)^Jᵢ (Table 16).
+pub(crate) const METASTABLE_RESIDUAL: [Term<i32>; 13] = [
+    Term {
+        i: 1,
+        j: 0,
+        n: -0.73362260186506e-2,
+    },
+    Term {
+        i: 1,
+        j: 2,
+        n: -0.88223831943146e-1,
+    },
+    Term {
+        i: 1,
+        j: 5,
+        n: -0.72334555213245e-1,
+    },
+    Term {
+        i: 1,
+        j: 11,
+        n: -0.40813178534455e-2,
+    },
+    Term {
+        i: 2,
+        j: 1,
+        n: 0.20097803380207e-2,
+    },
+    Term {
+        i: 2,
+        j: 7,
+        n: -0.53045921898642e-1,
+    },
+    Term {
+        i: 2,
+        j: 16,
+        n: -0.76190409086970e-2,
+    },
+    Term {
+        i: 3,
+        j: 4,
+        n: -0.63498037657313e-2,
+    },
+    Term {
+        i: 3,
+        j: 16,
+        n: -0.86043093028588e-1,
+    },
+    Term {
+        i: 4,
+        j: 7,
+        n: 0.75321581522770e-2,
+    },
+    Term {
+        i: 4,
+        j: 10,
+        n: -0.79238375446139e-2,
+    },
+    Term {
+        i: 5,
+        j: 9,
+        n: -0.22888160778447e-3,
+    },
+    Term {
+        i: 5,
+        j: 10,
+        n: -0.26456501482810e-2,
+    },
+];
+
 /// Region 5 residual part: γʳ = Σ nᵢ π^Iᵢ τ^Jᵢ (Table 38).
 pub(crate) const REGION5_RESIDUAL: [Term<i32>; 6] = [
     Term::new(1, 1, 0.0015736404855259),

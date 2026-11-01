@@ -81,6 +81,13 @@ impl<const N: usize> DormandPrince45<N> {
         self.previous_error = 1e-4;
     }
 
+    /// Forgets only the cached derivative, keeping the step size and its
+    /// history: for an outside change that rearranges the state without
+    /// changing the solution it represents.
+    pub fn forget_derivative(&mut self) {
+        self.first_stage = None;
+    }
+
     /// Work counters since construction.
     pub fn statistics(&self) -> Statistics {
         self.statistics

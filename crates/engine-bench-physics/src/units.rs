@@ -8,8 +8,8 @@ pub use uom::si::{
     Quantity, acceleration, angle, angular_velocity, area, available_energy, dynamic_viscosity,
     energy, f64::*, force, frequency, heat_capacity, length, mass, mass_density, mass_rate,
     molar_energy, molar_heat_capacity, molar_mass, power, pressure, ratio, specific_heat_capacity,
-    specific_volume, surface_tension, thermal_conductivity, thermodynamic_temperature, time,
-    torque, velocity, volume,
+    specific_volume, surface_tension, temperature_interval, thermal_conductivity,
+    thermodynamic_temperature, time, torque, velocity, volume,
 };
 
 #[cfg(test)]

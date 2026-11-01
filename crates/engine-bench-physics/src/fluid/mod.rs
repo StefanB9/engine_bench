@@ -21,6 +21,7 @@ mod saturation;
 mod state;
 mod table;
 mod transport;
+mod vapour;
 
 use std::sync::LazyLock;
 
