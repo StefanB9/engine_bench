@@ -21,6 +21,8 @@ use crate::{
 const MAX_ITERATIONS: usize = 60;
 /// Relative change in a and T at which Newton has converged.
 const TOLERANCE: f64 = 1e-13;
+/// Scaled mass and energy residuals at which it has converged too.
+const RESIDUAL: f64 = 1e-12;
 
 /// Liquid–vapour properties at one temperature, raw SI.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -111,7 +113,10 @@ impl Station {
 
 /// The station with impulse function `impulse` N at area `area` m² and
 /// liquid fraction `y`, by Newton's method from `guess` (a station nearby
-/// on the same branch); `None` if it does not converge.
+/// on the same branch); `None` if it does not converge or lands across the
+/// sonic point from `guess` (mass, energy and impulse have a subsonic and a
+/// supersonic root: a step too long for the area's growth can reach the
+/// other one, and the integrator then shortens it).
 pub(super) fn solve<F: CondensingFluid>(
     fluid: &F,
     c: &Conserved,
@@ -120,6 +125,8 @@ pub(super) fn solve<F: CondensingFluid>(
     y: f64,
     guess: &Station,
 ) -> Option<Station> {
+    let supersonic = guess.u > guess.frozen_sound_speed();
+    let on_branch = |s: &Station| (s.u > s.frozen_sound_speed()) == supersonic;
     let mut s = *guess;
     s.y = y;
     // The droplets' temperature follows the pressure; it enters only
@@ -141,10 +148,10 @@ pub(super) fn solve<F: CondensingFluid>(
             return None;
         }
         if !changed || y == 0.0 {
-            return Some(s);
+            return on_branch(&s).then_some(s);
         }
     }
-    Some(s)
+    on_branch(&s).then_some(s)
 }
 
 /// Newton's method on mass and energy with the droplet temperature held.
@@ -203,7 +210,11 @@ fn newton<F: CondensingFluid>(
         let shrink = (0.2 * a.abs() / da.abs()).min(0.05 * t / dt.abs()).min(1.0);
         a -= shrink * da;
         t -= shrink * dt;
-        if shrink >= 1.0 && da.abs() <= TOLERANCE * a.abs() && dt.abs() <= TOLERANCE * t {
+        // Converged when the step or, where round-off makes the step
+        // oscillate, both scaled residuals are at round-off.
+        let small_step = da.abs() <= TOLERANCE * a.abs() && dt.abs() <= TOLERANCE * t;
+        let small_residual = mass.abs() <= RESIDUAL && energy.abs() <= RESIDUAL;
+        if shrink >= 1.0 && (small_step || small_residual) {
             let v = fluid.vapour(a, t);
             s.a = a;
             s.t = t;

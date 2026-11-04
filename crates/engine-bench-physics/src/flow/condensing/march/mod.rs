@@ -367,13 +367,16 @@ impl<F: CondensingFluid> Run<'_, F> {
             .fluid
             .vapour_variable(p, t)
             .context("vapour behind the shock")?;
+        let area = self.march.contour.area_si(at.x).0;
+        let vapour = self.march.fluid.vapour(a, t);
         let guess = Station {
             a,
             t,
-            vapour: self.march.fluid.vapour(a, t),
+            vapour,
+            // Subsonic, as the root sought.
+            u: self.march.conserved.mass_flow / (vapour.rho * area),
             ..s
         };
-        let area = self.march.contour.area_si(at.x).0;
         let impulse = at.y[IMPULSE] * self.march.impulse_scale;
         let behind = solve(
             self.march.fluid,

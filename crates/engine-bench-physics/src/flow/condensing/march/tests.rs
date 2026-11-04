@@ -107,6 +107,40 @@ fn test_condensing_frozen_limit_matches_the_real_fluid_nozzle() -> anyhow::Resul
 }
 
 #[test]
+fn test_condensing_frozen_limit_holds_in_a_small_fast_cone() -> anyhow::Result<()> {
+    // A thruster's nozzle: 1 mm throat, 0.75 mm throat curvature, 15° cone
+    // to 7 mm. The area grows fast near the throat, so a step can carry the
+    // state across to the subsonic root unless the march holds its branch.
+    let mm = Length::new::<millimeter>;
+    let cone = Contour::conical(mm(1.0), mm(7.0), mm(0.75), Angle::new::<degree>(15.0))?;
+    let (p0, t0) = (Pressure::new::<kilopascal>(1000.0), kelvin_t(293.15));
+    let flow = CondensingNozzle::new(PureFluid::Nitrogen, cone, CondensationModel::frozen())
+        .expand(p0, t0)?;
+    let fluid = PureFluid::Nitrogen;
+    let a0 = fluid.vapour_variable(p0.get::<pascal>(), 293.15)?;
+    let v0 = fluid.vapour(a0, 293.15);
+    let chamber = Stagnation {
+        p: p0.get::<pascal>(),
+        h: v0.h,
+        s: v0.s,
+    };
+    let point = Nozzle::new(cone.throat_area(), cone.exit_area())?.real_operating_point(
+        &FrozenVapour::new(fluid),
+        &chamber,
+        Pressure::new::<pascal>(0.0),
+    )?;
+    let exit = flow.exit().ok_or(PhysicsError::InvalidState("no exit"))?;
+    anyhow::ensure!(
+        flow.samples().iter().all(|s| s.frozen_mach > 1.0),
+        "left the supersonic branch"
+    );
+    // The real-fluid nozzle solves its isentrope to ~1e-5.
+    let ratio = exit.pressure.get::<pascal>() / point.exit_pressure.get::<pascal>();
+    anyhow::ensure!((ratio - 1.0).abs() < 1e-4, "exit pressure ratio {ratio}");
+    Ok(())
+}
+
+#[test]
 fn test_condensing_march_conserves_mass_energy_and_obeys_the_second_law() -> anyhow::Result<()> {
     let flow = steam_252(CondensationModel::default())?;
     let samples = flow.samples();
@@ -304,5 +338,30 @@ fn test_condensing_nozzle_rejects_what_it_cannot_march() -> anyhow::Result<()> {
             "shock at {x}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn test_condensing_carbon_dioxide_expands_below_its_triple_point() -> anyhow::Result<()> {
+    // CO₂ from 30 bar at 20 °C passes its triple-point pressure (5.2 bar)
+    // just past the throat: the vapour becomes supersaturated over
+    // supercooled liquid and condenses within half a millimetre (MKNT).
+    let mm = Length::new::<millimeter>;
+    let cone = Contour::conical(mm(1.0), mm(7.0), mm(0.75), Angle::new::<degree>(15.0))?;
+    let flow = CondensingNozzle::new(
+        PureFluid::CarbonDioxide,
+        cone,
+        CondensationModel::cryogenic(),
+    )
+    .expand(Pressure::new::<kilopascal>(3000.0), kelvin_t(293.15))?;
+    let exit = flow.exit().ok_or(PhysicsError::InvalidState("no exit"))?;
+    anyhow::ensure!(exit.frozen_mach > 1.0, "Mach {}", exit.frozen_mach);
+    anyhow::ensure!(
+        exit.liquid_fraction > 0.1,
+        "liquid {}",
+        exit.liquid_fraction
+    );
+    let wilson = flow.wilson_point().map_or(f64::NAN, |x| x.get::<meter>());
+    anyhow::ensure!(wilson < 1e-3, "Wilson point {wilson} m");
     Ok(())
 }
