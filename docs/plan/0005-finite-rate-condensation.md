@@ -54,11 +54,26 @@ condensation at a finite rate.
 ## Engine (`engine-bench-core`)
 
 - Cold-gas thruster: mass flow from the throat as now (condensation starts downstream); thrust
-  and exit state from the condensing march. New control: divergence half-angle. New channels:
-  exit liquid fraction, mean droplet radius, Wilson point position. Argon works; CO₂ joins the
+  and exit state from the condensing march (`CondensationModel::cryogenic` for N₂, Ar, CO₂;
+  helium never supersaturates in the envelope and keeps the frozen solution). New channels:
+  exit liquid fraction, Sauter radius, Wilson point position. Argon works; CO₂ joins the
   propellants.
-- Real-time cost measured; if a march per step is too slow, thrust is evaluated less often and
-  interpolated (the fidelity rule: cut only where measured real time fails).
+- **Nozzle**: conical, throat radius of curvature 1.5 throat radii, new control for the
+  divergence half-angle (5° to 30°, default 15°); thrust includes the conical divergence factor
+  (1 + cos α)/2 on the momentum term.
+- **Measured cost** (optimised build, 1 mm throat, 7 mm exit): one march 5–7 ms; real time
+  evaluates thrust every 0.25 ms. **Decision: re-march on change**: the last march is kept and
+  reused while the nozzle inlet pressure, temperature and back pressure stay within a relative
+  tolerance (0.1 %), thrust scaled with inlet pressure in between; offline marches at every
+  evaluation.
+- **Supercritical heat addition** (measured: CO₂ from 5–10 bar chokes thermally ~1 mm past the
+  throat; at 30 bar it condenses without choking; argon condenses 5–23 % without choking;
+  nitrogen stays frozen). **Decision: quasi-steady condensation shock**: when the supersonic
+  march reaches the frozen sonic point by heat addition, a normal shock is placed in the
+  condensation zone where the subsonic, heated flow behind it passes smoothly through the
+  sonic point (heat release balancing the area growth, like a throat) and re-expands
+  supersonically; its position is found by bisection between post-shock flows that decelerate
+  and flows that choke again. The oscillation of real condensation shocks is not modelled.
 
 ## Validation
 
