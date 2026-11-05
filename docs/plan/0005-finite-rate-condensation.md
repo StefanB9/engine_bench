@@ -61,11 +61,18 @@ condensation at a finite rate.
 - **Nozzle**: conical, throat radius of curvature 1.5 throat radii, new control for the
   divergence half-angle (5° to 30°, default 15°); thrust includes the conical divergence factor
   (1 + cos α)/2 on the momentum term.
-- **Measured cost** (optimised build, 1 mm throat, 7 mm exit): one march 5–7 ms; real time
-  evaluates thrust every 0.25 ms. **Decision: re-march on change**: the last march is kept and
-  reused while the nozzle inlet pressure, temperature and back pressure stay within a relative
-  tolerance (0.1 %), thrust scaled with inlet pressure in between; offline marches at every
-  evaluation.
+- **Measured cost** (optimised build, 1 mm throat, 7 mm exit, after caching the triple-point
+  extrapolation): one march 15–670 ms (helium 15 ms, argon at 10 bar 670 ms); real time
+  evaluates thrust every 0.25 ms, and a valve ramp sweeps the inlet pressure over decades. Argon
+  and CO₂ have no frozen fallback (their frozen expansion leaves the trusted range).
+  **Decision: precomputed grid, built in parallel**: on reset or a change of nozzle or
+  propellant, marches at grid nodes over the reachable inlet range (vacuum floor to tank
+  pressure, 150–350 K), spacing set by measured interpolation accuracy, then interpolated.
+  Where neighbouring nodes differ beyond a threshold (a jump: argon's exit state switches
+  between 10.0 and 10.1 bar, when the reheat raises the critical radius past the main droplet
+  population and it evaporates — converged model behaviour), the cell is bisected in inlet
+  pressure to ~0.1 % and the jump's position kept, so interpolation never mixes branches. The
+  march tolerance is tightened until exit states converge (measured).
 - **Cold metastable vapour** (found while measuring): the reference equations' residual parts
   diverge in temperature curvature well below the triple point even for dilute vapour (cp
   negative: argon below ~35 K, nitrogen ~28 K, CO₂ ~155 K). **Decision: virial below the triple
