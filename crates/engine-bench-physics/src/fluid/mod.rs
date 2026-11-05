@@ -22,6 +22,7 @@ mod state;
 mod table;
 mod transport;
 mod vapour;
+mod virial;
 
 use std::sync::LazyLock;
 
@@ -66,6 +67,8 @@ pub(crate) struct Fluid {
     pub(crate) data: &'static FluidData,
     pub(crate) c1: f64,
     pub(crate) c2: f64,
+    /// The cold vapour's second virial coefficient below the triple point.
+    pub(crate) virial: Option<virial::Virial>,
 }
 
 /// Properties of a single-phase state.
@@ -135,7 +138,14 @@ impl Fluid {
         // h/RT = 1 + τα⁰_τ and s/R = τα⁰_τ − α⁰ for the ideal gas.
         let c2 = (h / (data.gas_constant * t) - 1.0 - t0) / tau;
         let c1 = t0 - delta.ln() - a0 - s / data.gas_constant;
-        Self { data, c1, c2 }
+        let mut fluid = Self {
+            data,
+            c1,
+            c2,
+            virial: None,
+        };
+        fluid.virial = virial::Virial::fitted(&fluid);
+        fluid
     }
 }
 

@@ -179,7 +179,12 @@ pub(crate) fn ideal_shape(data: &FluidData, tau: f64) -> (f64, f64, f64) {
 pub(crate) fn molar(fluid: &Fluid, rho: f64, t: f64) -> Molar {
     let data = fluid.data;
     let (delta, tau) = (rho / data.rho_crit, data.t_crit / t);
-    let r = residual(fluid, delta, tau);
+    let r = match fluid.virial {
+        Some(v) if tau > v.tau_switch && delta < super::virial::MAX_DELTA => {
+            v.residual(fluid, delta, tau)
+        }
+        _ => residual(fluid, delta, tau),
+    };
     let (a0, t0, tt0) = ideal_shape(data, tau);
     let a0 = a0 + delta.ln() + fluid.c1 + fluid.c2 * tau;
     let t0 = t0 + fluid.c2 * tau;

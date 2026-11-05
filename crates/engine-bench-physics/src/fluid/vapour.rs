@@ -42,14 +42,19 @@ impl VapourKernel for PureFluid {
         dome_top(self.data())
     }
 
-    /// From the second virial coefficient B(T) = lim (∂αʳ/∂δ)/ρ꜀ (δ → 0): Z − 1
+    /// From the second virial coefficient B(T) = lim (∂αʳ/∂δ)/ρ꜀ (δ → 0), the
+    /// cold vapour's below the triple point: Z − 1
     /// ≈ B·p/(RT), as Kalikmanov evaluates it (his Eq. 26).
     fn saturated_excess(&self, t: f64, p_sat: f64) -> f64 {
         const DILUTE: f64 = 1e-10;
         let fluid = self.data();
-        let r = residual(fluid, DILUTE, fluid.data.t_crit / t);
-        let b = r.d / DILUTE / fluid.data.rho_crit;
-        b * p_sat / (fluid.data.gas_constant * t)
+        let tau = fluid.data.t_crit / t;
+        // Below the triple point, the cold vapour's own second virial.
+        let beta = match fluid.virial {
+            Some(v) if tau > v.tau_switch => v.second_virial(tau),
+            _ => residual(fluid, DILUTE, tau).d / DILUTE,
+        };
+        beta / fluid.data.rho_crit * p_sat / (fluid.data.gas_constant * t)
     }
 
     /// The Lennard-Jones σ of the dilute-gas viscosity correlation.
