@@ -66,14 +66,25 @@ condensation at a finite rate.
   reused while the nozzle inlet pressure, temperature and back pressure stay within a relative
   tolerance (0.1 %), thrust scaled with inlet pressure in between; offline marches at every
   evaluation.
-- **Supercritical heat addition** (measured: CO₂ from 5–10 bar chokes thermally ~1 mm past the
-  throat; at 30 bar it condenses without choking; argon condenses 5–23 % without choking;
-  nitrogen stays frozen). **Decision: quasi-steady condensation shock**: when the supersonic
+- **Cold metastable vapour** (found while measuring): the reference equations' residual parts
+  diverge in temperature curvature well below the triple point even for dilute vapour (cp
+  negative: argon below ~35 K, nitrogen ~28 K, CO₂ ~155 K). **Decision: virial below the triple
+  point**: the equation's ideal gas plus a second virial coefficient. The approved Tsonopoulos
+  correlation itself diverges at the reduced temperatures reached (its (T꜀/T)⁸ term), so the
+  exact Lennard-Jones series B*(T*) is used, B = b₀·B*(T/ε) + B₀ matched to the equation's B in
+  value, slope and curvature at the triple point, plus the equation's own higher-order density
+  part held near the triple point (continuous to second order, thermodynamically consistent).
+- **Supercritical heat addition**: with correct cold properties the thruster's propellants do
+  not choke (CO₂ from 5–30 bar condenses 2.5–29 %, argon 3–23 %, nitrogen stays frozen); the
+  earlier CO₂ choke was the equation's artefact. Steam barely superheated in Moses and Stein's
+  slow nozzle does choke. **Decision: quasi-steady condensation shock**: when the supersonic
   march reaches the frozen sonic point by heat addition, a normal shock is placed in the
-  condensation zone where the subsonic, heated flow behind it passes smoothly through the
-  sonic point (heat release balancing the area growth, like a throat) and re-expands
-  supersonically; its position is found by bisection between post-shock flows that decelerate
-  and flows that choke again. The oscillation of real condensation shocks is not modelled.
+  condensation zone by bisection between shocks behind which the flow decelerates to a subsonic
+  exit and shocks behind which it chokes again; the subsonic flow then crosses the sonic saddle
+  (the supersonic root is taken at the first offset past it, up to 1 % of the nozzle, from which
+  the march reaches the exit; the droplets are held across that sliver) and re-expands. A
+  back-pressure shock behind a condensation shock is refused. The oscillation of real
+  condensation shocks is not modelled.
 
 ## Validation
 
