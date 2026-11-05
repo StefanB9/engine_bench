@@ -104,6 +104,7 @@ const VELOCITY: [DisplayUnit; 4] = [
     unit("ft/s", 1.0 / FOOT),
     unit("mph", 3600.0 / (5280.0 * FOOT)),
 ];
+const ANGLE: [DisplayUnit; 2] = [unit("rad", 1.0), unit("°", 180.0 / std::f64::consts::PI)];
 const ANGULAR_VELOCITY: [DisplayUnit; 3] = [
     unit("rad/s", 1.0),
     unit("rpm", 60.0 / std::f64::consts::TAU),
@@ -137,11 +138,12 @@ pub(crate) fn units(kind: QuantityKind) -> &'static [DisplayUnit] {
         QuantityKind::AngularVelocity => &ANGULAR_VELOCITY,
         QuantityKind::HeatTransferCoefficient => &HEAT_TRANSFER_COEFFICIENT,
         QuantityKind::Impulse => &IMPULSE,
+        QuantityKind::Angle => &ANGLE,
     }
 }
 
 /// Symbols chosen by the engineering preset, in `QuantityKind::ALL` order.
-const ENGINEERING: [&str; 16] = [
+const ENGINEERING: [&str; 17] = [
     "%",
     "s",
     "mm",
@@ -158,10 +160,11 @@ const ENGINEERING: [&str; 16] = [
     "rpm",
     "W/(m²·K)",
     "N·s",
+    "°",
 ];
 
 /// Symbols chosen by the imperial preset, in `QuantityKind::ALL` order.
-const IMPERIAL: [&str; 16] = [
+const IMPERIAL: [&str; 17] = [
     "%",
     "s",
     "in",
@@ -178,6 +181,7 @@ const IMPERIAL: [&str; 16] = [
     "rpm",
     "BTU/(h·ft²·°F)",
     "lbf·s",
+    "°",
 ];
 
 /// Preset symbol for `kind`: `None` means SI.
@@ -191,7 +195,8 @@ pub(super) fn preset_symbol(preset: super::Preset, kind: QuantityKind) -> Option
 }
 
 /// ASCII spellings accepted when parsing, mapped to their symbols.
-pub(super) const ALIASES: [(&str, &str); 18] = [
+pub(super) const ALIASES: [(&str, &str); 19] = [
+    ("deg", "°"),
     ("Ns", "N·s"),
     ("N*s", "N·s"),
     ("kNs", "kN·s"),
