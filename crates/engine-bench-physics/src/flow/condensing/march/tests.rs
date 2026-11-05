@@ -365,3 +365,88 @@ fn test_condensing_carbon_dioxide_expands_below_its_triple_point() -> anyhow::Re
     anyhow::ensure!(wilson < 1e-3, "Wilson point {wilson} m");
     Ok(())
 }
+
+#[test]
+fn test_condensing_supercritical_heat_addition_forms_a_condensation_shock() -> anyhow::Result<()> {
+    // Steam barely superheated (2 K and 0.5 K above saturation at 40 kPa)
+    // condenses so close to the throat of Moses and Stein's slow nozzle that
+    // the latent heat drives the supersonic flow to Mach 1. A quasi-steady
+    // normal shock then stands in the condensation zone; the heated subsonic
+    // flow behind it passes the sonic point and re-expands supersonically.
+    // The less superheat, the further upstream the shock.
+    let nozzle = CondensingNozzle::new(Water, moses_stein()?, CondensationModel::default());
+    let p0 = Pressure::new::<kilopascal>(40.05);
+    let flow = nozzle.expand(p0, kelvin_t(351.0))?;
+    let shock = flow
+        .condensation_shock()
+        .ok_or(PhysicsError::InvalidState("no condensation shock"))?;
+    let samples = flow.samples();
+    let at = samples
+        .windows(2)
+        .position(|w| w[0].position == w[1].position)
+        .ok_or(PhysicsError::InvalidState("no jump in the samples"))?;
+    let (before, after) = (&samples[at], &samples[at + 1]);
+    anyhow::ensure!(
+        (before.position.get::<meter>() - shock.get::<meter>()).abs() < 1e-9,
+        "jump at the shock"
+    );
+    anyhow::ensure!(
+        before.frozen_mach > 1.0 && after.frozen_mach < 1.0,
+        "Mach jump"
+    );
+    anyhow::ensure!(
+        (after.impulse / before.impulse - 1.0).abs() < 1e-9,
+        "impulse"
+    );
+    anyhow::ensure!(
+        after.entropy > before.entropy,
+        "entropy rises across the shock"
+    );
+    let exit = flow.exit().ok_or(PhysicsError::InvalidState("no exit"))?;
+    anyhow::ensure!(exit.frozen_mach > 1.3, "exit Mach {}", exit.frozen_mach);
+    let m = flow.mass_flow().get::<kilogram_per_second>();
+    let contour = moses_stein()?;
+    for s in samples {
+        let area = contour
+            .area(s.position)
+            .get::<crate::units::area::square_meter>();
+        let flux = s.density.value * s.velocity.value * area;
+        anyhow::ensure!((flux / m - 1.0).abs() < 1e-9, "mass at {:?}", s.position);
+    }
+    let colder = nozzle.expand(p0, kelvin_t(349.5))?;
+    let upstream = colder
+        .condensation_shock()
+        .ok_or(PhysicsError::InvalidState(
+            "no condensation shock at 349.5 K",
+        ))?;
+    anyhow::ensure!(upstream < shock, "{upstream:?} not upstream of {shock:?}");
+    // With more superheat condensation stays subcritical: no shock.
+    anyhow::ensure!(
+        steam_252(CondensationModel::default())?
+            .condensation_shock()
+            .is_none(),
+        "252"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_condensing_back_pressure_behind_a_condensation_shock() -> anyhow::Result<()> {
+    // Into a low back pressure the condensation-shocked flow exits
+    // supersonic as in vacuum; a back pressure that would need a second shock
+    // behind the condensation shock is refused, not guessed.
+    let nozzle = CondensingNozzle::new(Water, moses_stein()?, CondensationModel::default());
+    let (p0, t0) = (Pressure::new::<kilopascal>(40.05), kelvin_t(351.0));
+    let low = nozzle.expand_against(p0, t0, Pressure::new::<kilopascal>(1.0))?;
+    anyhow::ensure!(
+        low.condensation_shock().is_some() && low.shock().is_none(),
+        "low"
+    );
+    anyhow::ensure!(
+        nozzle
+            .expand_against(p0, t0, Pressure::new::<kilopascal>(30.0))
+            .is_err(),
+        "a back-pressure shock behind it"
+    );
+    Ok(())
+}

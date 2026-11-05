@@ -74,6 +74,7 @@ pub struct CondensingFlow {
     mass_flow: f64,
     exit_area: f64,
     shock: Option<f64>,
+    condensation_shock: Option<f64>,
 }
 
 impl CondensingFlow {
@@ -82,12 +83,14 @@ impl CondensingFlow {
         mass_flow: f64,
         exit_area: f64,
         shock: Option<f64>,
+        condensation_shock: Option<f64>,
     ) -> Self {
         Self {
             samples,
             mass_flow,
             exit_area,
             shock,
+            condensation_shock,
         }
     }
 
@@ -111,7 +114,14 @@ impl CondensingFlow {
         Area::new::<square_meter>(self.exit_area)
     }
 
-    /// Where the normal shock stands, if there is one.
+    /// Where a condensation shock stands, if the latent heat drove the
+    /// supersonic flow to the sonic point (supercritical heat addition).
+    pub fn condensation_shock(&self) -> Option<Length> {
+        self.condensation_shock.map(Length::new::<meter>)
+    }
+
+    /// Where the normal shock set by the back pressure stands, if there is
+    /// one.
     pub fn shock(&self) -> Option<Length> {
         self.shock.map(Length::new::<meter>)
     }
