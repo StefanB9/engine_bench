@@ -67,6 +67,13 @@ panic = "unwind"
 rpath = true
 strip = false
 
+# The physics kernels optimised even in debug and test builds: a condensing
+# nozzle march takes ~1 s unoptimised and ~7 ms optimised, and engines march
+# at every change of their nozzle's state. Debug assertions and overflow
+# checks stay on.
+[profile.dev.package.engine-bench-physics]
+opt-level = 3
+
 # Benchmarks: release optimisations with unwinding. The libtest/criterion harness needs
 # unwinding, and with `build-std` an `immediate-abort` std would be built alongside an
 # unwinding one and clash. Run with `cargo bench --profile bench-unwind`.

@@ -31,7 +31,7 @@ pub(crate) const BOUNDARY_TOLERANCE: f64 = 1e-9;
 
 /// Summerfield criterion: an over-expanded jet separates from the wall once the
 /// exit pressure drops below this fraction of the back pressure.
-pub(crate) const SEPARATION_PRESSURE_RATIO: f64 = 0.4;
+pub const SEPARATION_PRESSURE_RATIO: f64 = 0.4;
 
 /// Flow regime set by the back pressure.
 #[derive(Debug, Clone, Copy, PartialEq)]

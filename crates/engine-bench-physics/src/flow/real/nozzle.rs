@@ -57,6 +57,26 @@ impl Nozzle {
         })
     }
 
+    /// The back pressure above which the throat unchokes: the exit pressure
+    /// of the isentropic flow that is sonic at the throat and subsonic at
+    /// the exit. Below it the mass flow is the choked one whatever happens
+    /// downstream of the throat.
+    pub fn real_unchoking_pressure<F: RealFluid>(
+        &self,
+        fluid: &F,
+        chamber: &Stagnation,
+    ) -> anyhow::Result<Pressure> {
+        let line = Isentrope {
+            fluid,
+            stagnation: *chamber,
+        };
+        let sonic = line.choked().context("nozzle throat")?;
+        let subsonic = line
+            .with_flux(sonic.g / self.expansion_ratio(), &sonic, Branch::Subsonic)
+            .context("subsonic exit")?;
+        Ok(Pressure::new::<pascal>(subsonic.state.p()))
+    }
+
     /// Steady operating point for `fluid` from `chamber` into `back_pressure`
     /// (≥ 0; 0 is vacuum).
     pub fn real_operating_point<F: RealFluid>(
@@ -273,6 +293,21 @@ mod tests {
             prop_assert!(close(real.thrust.get::<newton>(), perfect.thrust.get::<newton>(), 1e-6), "F {:?} vs {:?}", real.thrust, perfect.thrust);
             prop_assert!(close(real.exit_pressure.get::<pascal>(), perfect.exit_pressure.get::<pascal>(), 1e-6));
             prop_assert!(close(real.exit_mach, perfect.exit_mach, 1e-6), "M {} vs {}", real.exit_mach, perfect.exit_mach);
+        }
+
+        /// Below the unchoking pressure the operating point is choked, above
+        /// it subsonic throughout.
+        #[test]
+        fn test_real_nozzle_unchokes_above_its_unchoking_pressure(epsilon in 1.05f64..12.0, ratio in 0.0f64..1.0) {
+            let gas = air().map_err(|e| fail(&e))?;
+            let nozzle = Nozzle::new(Area::new::<square_meter>(1e-4), Area::new::<square_meter>(epsilon * 1e-4)).map_err(|e| fail(&e))?;
+            let chamber = Stagnation::at_rest(&state(&gas, 2e6, 900.0).map_err(|e| fail(&e))?);
+            let limit = nozzle.real_unchoking_pressure(&gas, &chamber).map_err(|e| fail(&e))?.get::<pascal>();
+            let pb = ratio * 2e6;
+            prop_assume!((pb / limit - 1.0).abs() > 1e-6);
+            let point = nozzle.real_operating_point(&gas, &chamber, Pressure::new::<pascal>(pb)).map_err(|e| fail(&e))?;
+            let subsonic = matches!(point.regime, NozzleRegime::Subsonic);
+            prop_assert!(subsonic == (pb > limit), "{:?} at {} vs limit {}", point.regime, pb, limit);
         }
 
         /// The mass flow alone is the operating point's, in every regime.

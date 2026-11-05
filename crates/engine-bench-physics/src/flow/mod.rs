@@ -13,6 +13,6 @@ mod perfect_gas;
 pub mod real;
 pub mod shock;
 
-pub use nozzle::{Nozzle, NozzleOperatingPoint, NozzleRegime};
+pub use nozzle::{Nozzle, NozzleOperatingPoint, NozzleRegime, SEPARATION_PRESSURE_RATIO};
 pub use orifice::{Orifice, Reservoir};
 pub use perfect_gas::PerfectGas;
