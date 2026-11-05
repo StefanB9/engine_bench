@@ -80,14 +80,11 @@ impl Condensable for PureFluid {
         let (liquid_density, latent_heat, vapour_pressure) = if t >= t_triple {
             self.saturated_phases(t)?
         } else {
-            let (rho, latent, _) = self.saturated_phases(t_triple)?;
-            let t_next = t_triple * (1.0 + 1e-4);
-            let (rho_next, _, _) = self.saturated_phases(t_next)?;
-            let slope = (rho_next - rho) / (t_next - t_triple);
+            let x = self.triple()?;
             let p = self.vapour_pressure(ThermodynamicTemperature::new::<kelvin>(t))?;
             (
-                slope.mul_add(t - t_triple, rho),
-                latent,
+                x.rho_slope.mul_add(t - t_triple, x.rho_liquid),
+                x.latent,
                 p.get::<crate::units::pressure::pascal>(),
             )
         };

@@ -81,20 +81,36 @@ pub(crate) fn saturation_temperature<F: Condensable + ?Sized>(
 ) -> f64 {
     let ln_p = p.ln();
     let mut t = guess;
+    // Newton with the Clausius–Clapeyron slope L/(RT²) of ln pₛ in T (the
+    // ideal-vapour estimate) for the first step, then secant updates of it.
+    let mut previous: Option<(f64, f64)> = None;
     for _ in 0..40 {
         let Ok(x) = fluid.condensation(crate::units::ThermodynamicTemperature::new::<kelvin>(t))
         else {
             return f64::NAN;
         };
-        let p_sat = x.vapour_pressure.get::<pascal>();
-        let latent = x
-            .latent_heat
-            .get::<crate::units::available_energy::joule_per_kilogram>();
-        let slope = latent / (gas_constant * t * t);
-        let step = (ln_p - p_sat.ln()) / slope;
+        let ln_sat = x.vapour_pressure.get::<pascal>().ln();
+        let slope = match previous {
+            Some((t_prev, ln_prev))
+                if (t - t_prev).abs() > 0.0 && (ln_sat - ln_prev).abs() > 0.0 =>
+            {
+                (ln_sat - ln_prev) / (t - t_prev)
+            }
+            _ => {
+                let latent = x
+                    .latent_heat
+                    .get::<crate::units::available_energy::joule_per_kilogram>();
+                latent / (gas_constant * t * t)
+            }
+        };
+        previous = Some((t, ln_sat));
+        let residual = ln_p - ln_sat;
+        if residual.abs() <= 1e-14 * ln_p.abs().max(1.0) {
+            return t;
+        }
         // Steps are capped to a tenth of T: far from saturation the slope
         // is only a guide.
-        let step = step.clamp(-0.1 * t, 0.1 * t);
+        let step = (residual / slope).clamp(-0.1 * t, 0.1 * t);
         t += step;
         if step.abs() <= 1e-12 * t {
             return t;

@@ -24,7 +24,7 @@ mod transport;
 mod vapour;
 mod virial;
 
-use std::sync::LazyLock;
+use std::sync::{LazyLock, OnceLock};
 
 use anyhow::Context;
 use coefficients::FluidData;
@@ -122,6 +122,43 @@ pub struct PureState {
     pub enthalpy: AvailableEnergy,
     /// Specific entropy (NASA reference state).
     pub entropy: SpecificHeatCapacity,
+}
+
+/// The saturated phases at the triple point, raw SI: pressure, Pa, the
+/// slope of ln p over 1/T (Clausius–Clapeyron), liquid density, kg/m³, and
+/// its slope, kg/(m³·K), and latent heat, J/kg.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Triple {
+    pub(crate) p: f64,
+    pub(crate) ln_p_slope: f64,
+    pub(crate) rho_liquid: f64,
+    pub(crate) rho_slope: f64,
+    pub(crate) latent: f64,
+}
+
+impl Triple {
+    #[expect(
+        clippy::many_single_char_names,
+        reason = "the symbols m, t, p, l, v of the saturated phases"
+    )]
+    fn solved(fluid: &Fluid) -> anyhow::Result<Self> {
+        let m = fluid.data.molar_mass;
+        let t = fluid.data.t_triple;
+        let t_next = t * (1.0 + 1e-4);
+        let (p, rho_l, rho_v) = saturation::saturation_si(fluid, t)?;
+        let (p_next, rho_l_next, _) = saturation::saturation_si(fluid, t_next)?;
+        let (l, v) = (
+            helmholtz::molar(fluid, rho_l, t),
+            helmholtz::molar(fluid, rho_v, t),
+        );
+        Ok(Self {
+            p,
+            ln_p_slope: (p_next.ln() - p.ln()) / (1.0 / t_next - 1.0 / t),
+            rho_liquid: rho_l * m,
+            rho_slope: (rho_l_next - rho_l) * m / (t_next - t),
+            latent: (v.h - l.h) / m,
+        })
+    }
 }
 
 impl Fluid {
@@ -229,13 +266,34 @@ impl PureFluid {
             })
             .with_context(|| format!("{self:?} vapour pressure"));
         }
-        let t_next = t_triple * (1.0 + 1e-4);
-        let (p_triple, _, _) = saturation::saturation_si(fluid, t_triple)?;
-        let (p_next, _, _) = saturation::saturation_si(fluid, t_next)?;
-        let slope = (p_next.ln() - p_triple.ln()) / (1.0 / t_next - 1.0 / t_triple);
+        let x = self.triple()?;
         Ok(Pressure::new::<pascal>(
-            (p_triple.ln() + slope * (1.0 / t - 1.0 / t_triple)).exp(),
+            (x.p.ln() + x.ln_p_slope * (1.0 / t - 1.0 / t_triple)).exp(),
         ))
+    }
+
+    /// The saturated phases at the triple point and their slopes there, the
+    /// basis of every extrapolation below it (solved once per fluid).
+    pub(crate) fn triple(self) -> anyhow::Result<&'static Triple> {
+        static CELLS: [OnceLock<Option<Triple>>; 4] = [
+            OnceLock::new(),
+            OnceLock::new(),
+            OnceLock::new(),
+            OnceLock::new(),
+        ];
+        let index = match self {
+            Self::Nitrogen => 0,
+            Self::Argon => 1,
+            Self::Helium => 2,
+            Self::CarbonDioxide => 3,
+        };
+        CELLS
+            .get(index)
+            .and_then(|cell| {
+                cell.get_or_init(|| Triple::solved(self.data()).ok())
+                    .as_ref()
+            })
+            .ok_or_else(|| PhysicsError::InvalidState("no saturation at the triple point").into())
     }
 
     /// Saturated liquid and vapour at temperature `t`, from the triple point to
